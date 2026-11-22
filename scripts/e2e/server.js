@@ -1,4 +1,3 @@
-import { createReadStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
@@ -92,7 +91,7 @@ function send(response, status, body, type = 'text/plain; charset=utf-8') {
   response.end(body);
 }
 
-function safeStaticPath(pathname) {
+function safeStaticPath(pathname, root = ROOT) {
   let decoded;
   try {
     decoded = decodeURIComponent(pathname);
@@ -102,12 +101,13 @@ function safeStaticPath(pathname) {
   if (decoded.includes('\\') || decoded.includes('\0')) return null;
 
   const normalized = normalize(decoded).replace(/^([/\\])+/, '');
-  if (normalized === 'index.html') return join(ROOT, 'index.html');
+  if (normalized === '' || normalized === 'index.html') return join(resolve(root), 'index.html');
   if (!normalized.startsWith('src' + sep) || extname(normalized) !== '.js') return null;
   if (normalized.split(sep).some(part => !part || part.startsWith('.'))) return null;
 
-  const candidate = resolve(ROOT, normalized);
-  return candidate.startsWith(ROOT + sep) ? candidate : null;
+  const base = resolve(root);
+  const candidate = resolve(base, normalized);
+  return candidate.startsWith(base + sep) ? candidate : null;
 }
 
 export function createServer(config, root = ROOT) {
@@ -131,8 +131,8 @@ export function createServer(config, root = ROOT) {
       return;
     }
 
-    const file = safeStaticPath(pathname);
-    if (!file || !file.startsWith(resolve(root) + sep) && file !== join(resolve(root), 'index.html')) {
+    const file = safeStaticPath(pathname, root);
+    if (!file) {
       send(response, 404, 'Not found.');
       return;
     }
