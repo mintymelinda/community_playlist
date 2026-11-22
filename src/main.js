@@ -4,6 +4,7 @@ import { TwitchAuth } from './auth/twitch-auth.js';
 import { SpotifyAuth } from './auth/spotify-auth.js';
 import { SpotifyClient } from './spotify/client.js';
 import { TwitchEventSub } from './twitch/eventsub.js';
+import { RedemptionProcessor } from './twitch/redemption-processor.js';
 import { PlaybackCoordinator } from './playback/coordinator.js';
 
 const AUTO_START_KEY = 'community-playlist-auto-start';
@@ -52,6 +53,11 @@ class CommunityPlaylistApp {
       deviceId: config.spotifyDeviceId || '',
       pollIntervalMs: Math.max(1000, Number(config.pollIntervalMs) || 2000)
     });
+    this.redemptionProcessor = new RedemptionProcessor({
+      store: this.store,
+      spotify: this.spotify,
+      coordinator: this.coordinator
+    });
     this.eventSub = null;
     this.started = false;
     this.broadcasterId = null;
@@ -79,12 +85,13 @@ class CommunityPlaylistApp {
     this.powerUp = powerUp;
 
     await this.coordinator.start();
+    await this.redemptionProcessor.retryPending();
     this.eventSub = new TwitchEventSub({
       twitchAuth: this.twitchAuth,
       broadcasterId: this.broadcasterId,
       powerUpId: powerUp.id,
       store: this.store,
-      onRedemption: request => this.handleRedemption(request),
+      onRedemption: request => this.redemptionProcessor.accept(request),
       onChatCommand: command => this.handleChatCommand(command)
     });
 
@@ -116,30 +123,6 @@ class CommunityPlaylistApp {
     return powerUp;
   }
 
-  async handleRedemption(redemption) {
-    const input = String(redemption.input || '').trim();
-    if (!input) {
-      console.warn('[community-playlist] Ignored a redemption with empty song input. Redemption:', redemption.id);
-      return;
-    }
-    try {
-      const track = await this.spotify.resolveTrack(input);
-      await this.coordinator.enqueue({
-        id: redemption.id,
-        uri: track.uri,
-        title: track.name,
-        artists: track.artists,
-        durationMs: track.durationMs,
-        requester: redemption.requester,
-        requesterId: redemption.requesterId,
-        queuedAt: Date.now()
-      });
-      console.info('[community-playlist] Queued ' + track.name + ' by ' + track.artists.join(', ') + ' for ' + redemption.requester + '.');
-    } catch (error) {
-      console.error('[community-playlist] Could not accept redemption ' + redemption.id + ': ' + error.message);
-    }
-  }
-
   async handleChatCommand(command) {
     if (command.command === 'skip') {
       const skipped = await this.coordinator.skip();
@@ -149,6 +132,7 @@ class CommunityPlaylistApp {
 
   async stop() {
     this.eventSub?.stop();
+    this.redemptionProcessor.dispose();
     this.coordinator.stop();
     this.started = false;
     console.info('[community-playlist] Controller stopped. Spotify playback was not paused.');
