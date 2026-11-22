@@ -198,3 +198,138 @@ test('does not replay a request when an EventSub redemption is delivered twice',
   assert.equal(store.get().pending.length, 0);
   assert.equal(spotify.played.length, 1);
 });
+
+
+test('recovers an active request after reload when Spotify still plays that request', async () => {
+  const storage = new MemoryStorage();
+  const spotify = new FakeSpotify();
+  const firstStore = new QueueStore(storage);
+  const firstCoordinator = new PlaybackCoordinator({
+    spotify, store: firstStore, playlistUri, playlistId: 'playlist1',
+    timers: { setInterval: () => 1, clearInterval() {} },
+    logger: { info() {}, warn() {}, error() {} }
+  });
+  const activeRequest = request('reload-active', { ...tracks[2], name: 'X' });
+  await firstCoordinator.enqueue(activeRequest);
+  const reloadedStore = new QueueStore(storage);
+  const reloadedCoordinator = new PlaybackCoordinator({
+    spotify, store: reloadedStore, playlistUri, playlistId: 'playlist1',
+    timers: { setInterval: () => 2, clearInterval() {} },
+    logger: { info() {}, warn() {}, error() {} }
+  });
+
+  await reloadedCoordinator.start();
+
+  assert.equal(reloadedStore.get().active.id, 'reload-active');
+  assert.equal(reloadedStore.get().mode, 'playing-request');
+  assert.deepEqual(reloadedStore.get().pending, []);
+  assert.equal(spotify.played.length, 1);
+  reloadedCoordinator.stop();
+});
+
+test('recovers by advancing to the next viewer request if Spotify already resumed the saved playlist track', async () => {
+  const storage = new MemoryStorage();
+  const spotify = new FakeSpotify();
+  const firstStore = new QueueStore(storage);
+  const firstCoordinator = new PlaybackCoordinator({
+    spotify, store: firstStore, playlistUri, playlistId: 'playlist1',
+    timers: { setInterval: () => 1, clearInterval() {} },
+    logger: { info() {}, warn() {}, error() {} }
+  });
+  await firstCoordinator.enqueue(request('reload-complete-x', { ...tracks[2], name: 'X' }));
+  await firstCoordinator.enqueue(request('reload-pending-y', { ...tracks[3], name: 'Y' }));
+
+  spotify.current = {
+    device: { id: deviceId },
+    context: { type: 'playlist', uri: playlistUri },
+    item: tracks[1],
+    is_playing: true,
+    shuffle_state: false,
+    repeat_state: 'off',
+    progress_ms: 0
+  };
+
+  const reloadedStore = new QueueStore(storage);
+  const reloadedCoordinator = new PlaybackCoordinator({
+    spotify, store: reloadedStore, playlistUri, playlistId: 'playlist1',
+    timers: { setInterval: () => 2, clearInterval() {} },
+    logger: { info() {}, warn() {}, error() {} }
+  });
+
+  await reloadedCoordinator.start();
+
+  assert.equal(reloadedStore.get().active.id, 'reload-pending-y');
+  assert.equal(reloadedStore.get().snapshot.nextOffset, 1);
+  assert.equal(spotify.current.item.uri, tracks[3].uri);
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri, tracks[3].uri]);
+  reloadedCoordinator.stop();
+});
+
+test('hands off an active request with no persisted playlist snapshot after reload', async () => {
+  const storage = new MemoryStorage();
+  const spotify = new FakeSpotify();
+  const store = new QueueStore(storage);
+  store.update(state => {
+    state.active = { ...request('missing-snapshot', tracks[2]), lastProgressMs: 0, startedAt: Date.now() };
+    state.mode = 'starting';
+  });
+
+  const reloadedStore = new QueueStore(storage);
+  const coordinator = new PlaybackCoordinator({
+    spotify, store: reloadedStore, playlistUri, playlistId: 'playlist1',
+    timers: { setInterval: () => 1, clearInterval() {} },
+    logger: { info() {}, warn() {}, error() {} }
+  });
+
+  await coordinator.start();
+
+  assert.equal(reloadedStore.get().mode, 'handoff');
+  assert.equal(reloadedStore.get().active, null);
+  assert.deepEqual(reloadedStore.get().pending.map(item => item.id), ['missing-snapshot']);
+  assert.equal(spotify.played.length, 0);
+  assert.equal(spotify.restored.length, 0);
+  coordinator.stop();
+});
+
+test('hands off without replay when reload finds an unrelated Spotify track or device', async () => {
+  for (const changedDevice of [false, true]) {
+    const storage = new MemoryStorage();
+    const spotify = new FakeSpotify();
+    const store = new QueueStore(storage);
+    store.update(state => {
+      state.active = { ...request('manual-change-' + changedDevice, tracks[2]), lastProgressMs: 0, startedAt: Date.now() };
+      state.snapshot = {
+        playlistUri,
+        deviceId,
+        currentTrackUri: tracks[0].uri,
+        nextOffset: 1,
+        nextTrackUri: tracks[1].uri,
+        playlistLength: tracks.length,
+        capturedAt: Date.now()
+      };
+      state.mode = 'playing-request';
+    });
+    spotify.current = {
+      device: { id: changedDevice ? 'other-device' : deviceId },
+      context: null,
+      item: { uri: 'spotify:track:manually-selected', duration_ms: 180000 },
+      is_playing: true
+    };
+
+    const reloadedStore = new QueueStore(storage);
+    const coordinator = new PlaybackCoordinator({
+      spotify, store: reloadedStore, playlistUri, playlistId: 'playlist1',
+      timers: { setInterval: () => 1, clearInterval() {} },
+      logger: { info() {}, warn() {}, error() {} }
+    });
+
+    await coordinator.start();
+
+    assert.equal(reloadedStore.get().mode, 'handoff');
+    assert.equal(reloadedStore.get().active, null);
+    assert.equal(reloadedStore.get().pending.length, 1);
+    assert.equal(spotify.played.length, 0);
+    assert.equal(spotify.restored.length, 0);
+    coordinator.stop();
+  }
+});
