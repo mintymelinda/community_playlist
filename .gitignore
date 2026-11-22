@@ -1,0 +1,12 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.token
+*.tokens
+*.secret
+
+# Local tooling
+.DS_Store
+node_modules/
+coverage/
