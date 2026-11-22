@@ -145,7 +145,7 @@ export class TwitchEventSub {
     });
 
     socket.addEventListener('close', () => {
-      clearTimeout(timeout);
+      this.timers.clearTimeout(timeout);
       if (socket === this.socket) this.scheduleReconnect();
     });
 
@@ -155,7 +155,7 @@ export class TwitchEventSub {
 
     try {
       const sessionId = await welcomed;
-      clearTimeout(timeout);
+      this.timers.clearTimeout(timeout);
       if (!migrating) {
         try {
           await this.subscribe(sessionId);
@@ -166,14 +166,14 @@ export class TwitchEventSub {
       }
       return sessionId;
     } catch (error) {
-      clearTimeout(timeout);
+      this.timers.clearTimeout(timeout);
       if (socket.readyState < 2) socket.close();
       throw error;
     }
   }
 
   startKeepaliveWatch(timeoutSeconds) {
-    this.timers.this.timers.clearInterval(this.keepaliveTimer);
+    this.timers.clearInterval(this.keepaliveTimer);
     this.lastMessageAt = Date.now();
     this.keepaliveTimer = this.timers.setInterval(() => {
       if (this.stopped || !this.socket) return;
@@ -231,7 +231,7 @@ export class TwitchEventSub {
 
   scheduleReconnect() {
     if (this.stopped || this.reconnectTimer) return;
-    clearInterval(this.keepaliveTimer);
+    this.timers.clearInterval(this.keepaliveTimer);
     this.reconnectAttempts += 1;
     const wait = Math.min(30000, 1000 * (2 ** Math.min(this.reconnectAttempts, 5)));
     this.logger.warn('[community-playlist] Reconnecting Twitch EventSub in ' + wait + 'ms.');
@@ -249,7 +249,7 @@ export class TwitchEventSub {
   stop() {
     this.stopped = true;
     this.timers.clearTimeout(this.reconnectTimer);
-    clearInterval(this.keepaliveTimer);
+    this.timers.clearInterval(this.keepaliveTimer);
     this.reconnectTimer = null;
     this.keepaliveTimer = null;
     if (this.socket && this.socket.readyState < 2) this.socket.close(1000, 'Controller stopped');
