@@ -114,6 +114,14 @@ Record device model/app, account eligibility, request/response status, observed 
 
 **Go/no-go:** if the API cannot restore the intended playlist position and preserve the expected sequence across the supported playback configurations, stop and revise the product behaviour before implementing the coordinator. Do not silently fall back to appending viewer requests to the Spotify queue.
 
+## Spotify platform policy boundary
+
+Spotify's Player API reference also carries platform policy notes stating that Spotify content may not be broadcast and that sound recordings may not be synchronized with visual media. This project is explicitly not a live-streaming or broadcasting tool and does not transmit audio, but the optional Now Playing visual could raise a separate synchronization question if it is displayed alongside Spotify playback.
+
+For that reason, keep the controller headless. Do not implement the optional visual display, album artwork, or any audio/visual presentation until the applicable Spotify platform terms have been reviewed for the exact use case. This is a product-policy gate separate from whether the playback API technically works.
+
+Source: [Spotify Start/Resume Playback API policy notes](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback).
+
 ## OAuth and browser lifecycle
 
 - Spotify browser authorization should use Authorization Code with PKCE; no client secret belongs in the page.
