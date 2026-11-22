@@ -24,14 +24,24 @@ function validateConfig(config) {
 class CommunityPlaylistApp {
   constructor(config) {
     this.config = config;
-    this.store = new QueueStore(localStorage, 'community-playlist-queue-v1', config.maxPendingRequests || 100);
+    this.e2eMode = config.e2eMode === true &&
+      location.protocol === 'http:' &&
+      location.hostname === '127.0.0.1';
+    this.autoStartKey = this.e2eMode ? 'community-playlist-e2e-auto-start' : AUTO_START_KEY;
+    const queueKey = this.e2eMode ? 'community-playlist-e2e-queue-v1' : 'community-playlist-queue-v1';
+    const storagePrefix = this.e2eMode ? 'community-playlist-e2e-' : 'community-playlist-';
+    if (this.e2eMode && sessionStorage.getItem('community-playlist-e2e-initialized') !== '1') {
+      localStorage.removeItem(queueKey);
+      sessionStorage.setItem('community-playlist-e2e-initialized', '1');
+    }
+    this.store = new QueueStore(localStorage, queueKey, config.maxPendingRequests || 100);
     this.twitchAuth = new TwitchAuth({
       clientId: config.twitchClientId,
       scopes: ['bits:read', 'user:read:chat'],
-      tokenStore: new TokenStore(sessionStorage, 'community-playlist-twitch-token')
+      tokenStore: new TokenStore(sessionStorage, storagePrefix + 'twitch-token')
     });
-    const spotifyTokenStore = new TokenStore(sessionStorage, 'community-playlist-spotify-token');
-    const spotifyPkceStore = new TokenStore(sessionStorage, 'community-playlist-spotify-pkce');
+    const spotifyTokenStore = new TokenStore(sessionStorage, storagePrefix + 'spotify-token');
+    const spotifyPkceStore = new TokenStore(sessionStorage, storagePrefix + 'spotify-pkce');
     this.spotifyAuth = new SpotifyAuth({
       clientId: config.spotifyClientId,
       redirectUri: config.spotifyRedirectUri,
@@ -70,7 +80,7 @@ class CommunityPlaylistApp {
 
     await this.spotifyAuth.handleRedirect();
     if (!this.spotifyAuth.session?.accessToken) {
-      sessionStorage.setItem(AUTO_START_KEY, '1');
+      sessionStorage.setItem(this.autoStartKey, '1');
       await this.spotifyAuth.beginAuthorization();
       return { mode: 'spotify-authorization' };
     }
@@ -173,9 +183,22 @@ async function bootstrap() {
     status: () => app.status()
   };
 
+  if (app.e2eMode) {
+    const { createLiveE2ESuite } = await import('./e2e/live-suite.js');
+    const suite = createLiveE2ESuite(app);
+    globalThis.communityPlaylist.e2e = {
+      preflight: () => suite.preflight(),
+      runPlaybackSequence: () => suite.runPlaybackSequence(),
+      runRealChatSkipTest: timeoutMs => suite.runRealChatSkipTest(timeoutMs),
+      verifyProviderTokenRefresh: () => suite.verifyProviderTokenRefresh(),
+      verifyEventSubReconnect: timeoutMs => suite.verifyEventSubReconnect(timeoutMs),
+      waitForRealRedemption: timeoutMs => suite.waitForRealRedemption(timeoutMs)
+    };
+  }
+
   console.info('[community-playlist] Headless controller loaded. Run communityPlaylist.start() in the console.');
-  if (sessionStorage.getItem(AUTO_START_KEY) === '1') {
-    sessionStorage.removeItem(AUTO_START_KEY);
+  if (sessionStorage.getItem(app.autoStartKey) === '1') {
+    sessionStorage.removeItem(app.autoStartKey);
     await app.start();
   }
 }

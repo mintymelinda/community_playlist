@@ -20,6 +20,25 @@ Sources:
 - [Twitch Device Code grant](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/)
 - [Twitch EventSub WebSocket handling](https://dev.twitch.tv/docs/eventsub/handling-websocket-events/)
 
+## Live-account end-to-end environment
+
+A no-dependency local runner is available through `npm run e2e:serve`. Copy `.env.e2e.example` to the ignored `.env.e2e` file and populate only the Twitch/Spotify public client IDs, playlist URI, and two test-track URIs/URLs. Never store client secrets, access tokens, refresh tokens, or authorization codes in this file. The server uses an explicit environment allowlist, binds only to `127.0.0.1`, serves the app's root page and source JavaScript plus an in-memory `config.local.js`, and disables caching. E2E tokens are created by the normal Spotify PKCE and Twitch Device Code browser flows, held in isolated E2E `sessionStorage` keys, and never sent to the local server.
+
+Spotify's registered redirect URI must be exactly `http://127.0.0.1:4173/` for the default port (or the matching loopback IP and port if `PORT` is changed). Spotify requires loopback redirects to use an explicit IP literal rather than `localhost`; see the [Spotify redirect URI requirements](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri) and [PKCE guide](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow). Twitch Device Code authorization is designed for public clients and does not require a client secret; see [Twitch OAuth token documentation](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/).
+
+Start the server, open the loopback URL in a disposable browser profile, and run `communityPlaylist.start()`. With the configured playlist playing on the target Connect device (shuffle/repeat off), run:
+
+```js
+await communityPlaylist.e2e.preflight()
+await communityPlaylist.e2e.runPlaybackSequence()
+```
+
+This sequence synthesizes Twitch notification payloads at the connected EventSub handler boundary, but uses actual Spotify search/track lookup, player state, playback commands and queue reads. It verifies request X then Y, unauthorized skip rejection, broadcaster skip, restoration to the exact saved next playlist track, and no playlist mutation. It does not validate delivery of a real Twitch notification. The browser suite also exposes `verifyProviderTokenRefresh()`, which forces real Twitch and Spotify refresh-token grants and validates API access without displaying token values, and `verifyEventSubReconnect()`, which closes the active WebSocket, waits for a new session, and queries Twitch to confirm both subscriptions are enabled on that session.
+
+For real Twitch transport validation, call `await communityPlaylist.e2e.waitForRealRedemption()` and then redeem the configured Custom Power-up. This is a real redemption and may spend Bits. To exercise actual chat EventSub delivery and permissions, call `await communityPlaylist.e2e.runRealChatSkipTest()`; it prompts for an unauthorized viewer `!skip` followed by a broadcaster/moderator `!skip`, and verifies both effects against live Spotify playback. The local E2E queue and OAuth session namespace are distinct from normal browser app storage.
+
+The test harness is safety-first: if playback validation fails after the sequence has started, it enters handoff and preserves remaining requests rather than attempting an unverified restoration. Inspect the current status and manually re-establish the configured playlist before invoking `communityPlaylist.resume()`.
+
 ## Spotify
 
 The controller uses Authorization Code with PKCE and the scopes:

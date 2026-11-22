@@ -37,6 +37,8 @@ export class TwitchEventSub {
     this.timers = timers;
     this.socket = null;
     this.oldSocket = null;
+    this.sessionId = null;
+    this.subscribedSessionId = null;
     this.stopped = true;
     this.reconnectTimer = null;
     this.keepaliveTimer = null;
@@ -107,6 +109,7 @@ export class TwitchEventSub {
           return;
         }
         this.socket = socket;
+        this.sessionId = sessionId;
         if (oldSocket && oldSocket !== socket && oldSocket.readyState < 2) {
           oldSocket.close(1000, migrating ? 'Session migrated' : 'Replaced after reconnect');
         }
@@ -164,6 +167,7 @@ export class TwitchEventSub {
           throw error;
         }
       }
+      this.subscribedSessionId = sessionId;
       return sessionId;
     } catch (error) {
       this.timers.clearTimeout(timeout);
@@ -256,5 +260,7 @@ export class TwitchEventSub {
     if (this.oldSocket && this.oldSocket.readyState < 2) this.oldSocket.close(1000, 'Controller stopped');
     this.socket = null;
     this.oldSocket = null;
+    this.sessionId = null;
+    this.subscribedSessionId = null;
   }
 }

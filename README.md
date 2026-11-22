@@ -85,6 +85,27 @@ If the device changes or unrelated manual playback is detected, the controller s
 
 Spotify's platform terms prohibit broadcasting Spotify content and synchronizing sound recordings with visual media. This app remains headless and has no audio or visual rendering path; it must not be used to pipe Spotify audio into a broadcast or to synchronize Spotify recordings with an overlay.
 
+## Live-account E2E test environment
+
+The local E2E runner uses the same Twitch/Spotify OAuth implementations and the real Spotify Web API/Connect device. It serves the application only on `127.0.0.1`; the generated browser config contains public client IDs and test settings only. **Do not put Twitch or Spotify client secrets, access tokens, refresh tokens, or authorization codes in `.env.e2e`.** The runner ignores secret/token environment variables rather than forwarding them.
+
+1. Copy `.env.e2e.example` to `.env.e2e`.
+2. Set `TWITCH_CLIENT_ID`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_PLAYLIST_URI`, `E2E_TRACK_X`, and `E2E_TRACK_Y`. Use two different Spotify track URIs or URLs for X and Y. Optional broadcaster, Power-up, and Connect device IDs can also be set.
+3. Add the exact redirect URI `http://127.0.0.1:4173/` to the Spotify app's redirect URI allowlist. Do not substitute `localhost`; Spotify's loopback redirect requires an explicit IP literal. The runner defaults to port 4173. If you change `PORT`, change `SPOTIFY_REDIRECT_URI` to the exact matching `http://127.0.0.1:PORT/` value.
+4. Use a disposable browser profile. Start the test server with `npm run e2e:serve`, then open `http://127.0.0.1:4173/`.
+5. Open the browser developer console and run `communityPlaylist.start()`. Complete Spotify PKCE authorization and the Twitch Device Code flow. These flows happen directly between the browser and their providers; the local server does not receive or persist OAuth tokens.
+6. On the target Spotify Connect device, play the configured playlist with shuffle and repeat off. Choose X and Y so neither is the currently playing song nor the playlist track that should resume next. Make sure the playlist has at least one upcoming track.
+7. Run `await communityPlaylist.e2e.preflight()`, then `await communityPlaylist.e2e.runPlaybackSequence()`.
+8. Run `await communityPlaylist.e2e.verifyProviderTokenRefresh()` to force both providers through their real refresh-token flow, and `await communityPlaylist.e2e.verifyEventSubReconnect()` to deliberately disconnect EventSub and verify the replacement session has both subscriptions.
+
+The automated live sequence uses synthetic Twitch notification objects passed through the application's EventSub notification handler, so it does not spend Bits. It performs real Spotify track resolution and playback commands, checks that X then Y play, verifies that an unauthorized `!skip` is ignored, checks broadcaster `!skip`, confirms the playlist resumes at the exact saved next track, and verifies that the playlist items were not modified. This exercises the Spotify Connect device and coordinator, but it does not prove Twitch delivered a real notification. The refresh helper deliberately expires each OAuth session and verifies that Twitch refresh-token rotation and Spotify PKCE refresh both restore API access without printing credentials. The reconnect helper closes the active Twitch WebSocket, waits for a new session, and confirms that both expected subscriptions are enabled on it.
+
+To validate actual Twitch EventSub delivery and chat moderation, run `await communityPlaylist.e2e.runRealChatSkipTest()`. The helper prepares synthetic X/Y requests through real Spotify playback, then prompts for `!skip` from an ordinary viewer followed by the broadcaster or a moderator. It checks that the viewer command has no effect, the authorized command advances X to Y, and the playlist is restored without mutation. To validate a genuine Custom Power-up redemption separately, run `await communityPlaylist.e2e.waitForRealRedemption()` and then redeem the configured Power-up on the broadcaster's channel. This is a real redemption and may spend Bits.
+
+E2E mode uses separate `sessionStorage` token keys and a separate `localStorage` request queue. It is enabled only on the local `http://127.0.0.1` origin. The local server binds only to loopback, serves only the application JavaScript and HTML plus generated `config.local.js`, disables caching, and does not log request URLs. The `.env.e2e` file is ignored by Git. Do not share browser HAR files, profile directories, or console dumps containing OAuth codes or tokens.
+
+If a test is interrupted after a Spotify command, the harness enters the coordinator's safe handoff mode and preserves remaining requests rather than blindly issuing another play or restore command. Inspect `communityPlaylist.status()` before using `communityPlaylist.resume()`.
+
 ## Development
 
 There are no dependencies to install. Run:

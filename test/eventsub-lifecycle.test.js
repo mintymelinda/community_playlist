@@ -83,6 +83,23 @@ function welcome(sessionId) {
   };
 }
 
+
+function chatNotification(broadcasterId, chatterId, messageId, badges = []) {
+  return {
+    metadata: { message_type: 'notification', message_id: messageId },
+    payload: {
+      subscription: { type: 'channel.chat.message' },
+      event: {
+        broadcaster_user_id: broadcasterId,
+        chatter_user_id: chatterId,
+        chatter_user_name: 'E2E Test',
+        badges,
+        message: { text: '!skip' }
+      }
+    }
+  };
+}
+
 function createEventSub() {
   FakeWebSocket.instances = [];
   const timers = new FakeTimers();
@@ -131,6 +148,8 @@ test('opens EventSub and subscribes to redemption and broadcaster chat events', 
   const socket = await connect(env.eventSub);
 
   assert.equal(env.eventSub.socket, socket);
+  assert.equal(env.eventSub.sessionId, 'session-1');
+  assert.equal(env.eventSub.subscribedSessionId, 'session-1');
   assert.deepEqual(env.subscriptions.map(item => item.type), [
     'channel.custom_power_up_redemption.add',
     'channel.chat.message'
@@ -176,6 +195,8 @@ test('migrates to Twitch reconnect URL without duplicating subscriptions', async
 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(env.eventSub.socket, migratedSocket);
+  assert.equal(env.eventSub.sessionId, 'session-2');
+  assert.equal(env.eventSub.subscribedSessionId, 'session-2');
   assert.equal(oldSocket.readyState, 3);
   assert.equal(env.subscriptions.length, 2);
   env.eventSub.stop();
@@ -194,6 +215,8 @@ test('reconnects after an unexpected socket close and re-subscribes', async () =
   await reconnecting;
 
   assert.equal(env.eventSub.socket, secondSocket);
+  assert.equal(env.eventSub.sessionId, 'session-2');
+  assert.equal(env.eventSub.subscribedSessionId, 'session-2');
   assert.equal(env.subscriptions.length, 4);
   env.eventSub.stop();
 });
@@ -224,4 +247,31 @@ test('stop closes active sockets and cancels reconnect and keepalive timers', as
   assert.equal(env.timers.timeouts.size, 0);
   assert.equal(env.timers.intervals.size, 0);
   assert.equal(env.eventSub.socket, null);
+});
+
+
+test('ignores unauthorized real chat messages and deduplicates authorized !skip events', async () => {
+  const env = createEventSub();
+  const unauthorized = chatNotification(
+    broadcasterId,
+    'ordinary-viewer',
+    'unauthorized-skip'
+  );
+  await env.eventSub.handleNotification(unauthorized);
+
+  assert.equal(env.commands.length, 0);
+  assert.equal(env.eventSub.store.messages.has('unauthorized-skip'), false);
+
+  const authorized = chatNotification(
+    broadcasterId,
+    'moderator-1',
+    'authorized-skip',
+    [{ set_id: 'moderator', id: '1' }]
+  );
+  await env.eventSub.handleNotification(authorized);
+  await env.eventSub.handleNotification(authorized);
+
+  assert.equal(env.commands.length, 1);
+  assert.equal(env.commands[0].command, 'skip');
+  assert.equal(env.eventSub.store.messages.has('authorized-skip'), true);
 });
