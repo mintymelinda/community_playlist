@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -19,5 +19,5 @@ jobs:
         with:
           node-version: 24
 
-      - name: Check JavaScript syntax
-        run: npm run check
+      - name: Run syntax and automated tests
+        run: npm run verify

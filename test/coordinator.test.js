@@ -1,0 +1,187 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { MemoryStorage, QueueStore } from '../src/lib/queue-store.js';
+import { PlaybackCoordinator } from '../src/playback/coordinator.js';
+
+const playlistUri = 'spotify:playlist:playlist1';
+const deviceId = 'device-1';
+const tracks = ['a', 'b', 'c', 'd'].map(id => ({
+  id,
+  uri: 'spotify:track:' + id,
+  name: id.toUpperCase(),
+  duration_ms: 180000,
+  durationMs: 180000
+}));
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+class FakeSpotify {
+  constructor() {
+    this.current = {
+      device: { id: deviceId },
+      context: { type: 'playlist', uri: playlistUri },
+      item: tracks[0],
+      is_playing: true,
+      shuffle_state: false,
+      repeat_state: 'off',
+      progress_ms: 12000
+    };
+    this.played = [];
+    this.restored = [];
+  }
+  async getPlaybackState() { return clone(this.current); }
+  async getPlaylistItems() { return tracks; }
+  async getQueue() { return tracks.slice(1); }
+  async playTrack(uri, targetDevice) {
+    this.played.push({ uri, targetDevice });
+    const item = tracks.find(track => track.uri === uri) || { uri, id: uri.split(':').at(-1), duration_ms: 180000 };
+    this.current = {
+      device: { id: targetDevice },
+      context: null,
+      item,
+      is_playing: true,
+      shuffle_state: false,
+      repeat_state: 'off',
+      progress_ms: 0
+    };
+  }
+  async playPlaylistAt(uri, offset, targetDevice) {
+    this.restored.push({ uri, offset, targetDevice });
+    this.current = {
+      device: { id: targetDevice },
+      context: { type: 'playlist', uri },
+      item: tracks[offset],
+      is_playing: true,
+      shuffle_state: false,
+      repeat_state: 'off',
+      progress_ms: 0
+    };
+  }
+}
+
+function createCoordinator() {
+  const spotify = new FakeSpotify();
+  const store = new QueueStore(new MemoryStorage());
+  const timers = { setInterval: () => 1, clearInterval: () => {} };
+  const logger = { info() {}, warn() {}, error() {} };
+  const coordinator = new PlaybackCoordinator({
+    spotify, store, playlistUri, playlistId: 'playlist1', timers, logger
+  });
+  return { spotify, store, coordinator };
+}
+
+const request = (id, track, requester = 'viewer') => ({
+  id,
+  uri: track.uri,
+  title: track.name,
+  artists: ['Artist'],
+  durationMs: track.duration_ms,
+  requester,
+  queuedAt: Date.now()
+});
+
+test('plays viewer requests FIFO ahead of the saved playlist continuation', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  await coordinator.enqueue(request('request-1', { ...tracks[2], name: 'X' }));
+  await coordinator.enqueue(request('request-2', { ...tracks[3], name: 'Y' }));
+
+  assert.equal(store.get().active.id, 'request-1');
+  assert.deepEqual(store.get().pending.map(item => item.id), ['request-2']);
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri]);
+
+  assert.equal(await coordinator.skip(), true);
+  assert.equal(store.get().active.id, 'request-2');
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri, tracks[3].uri]);
+
+  assert.equal(await coordinator.skip(), true);
+  assert.equal(store.get().active, null);
+  assert.equal(store.get().snapshot, null);
+  assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
+  assert.equal(spotify.current.item.uri, tracks[1].uri);
+});
+
+test('keeps the original next-track offset when Spotify advances before pending requests finish', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  await coordinator.enqueue(request('request-1', { ...tracks[2], name: 'X' }));
+  await coordinator.enqueue(request('request-2', { ...tracks[3], name: 'Y' }));
+  coordinator.started = true;
+
+  spotify.current = {
+    device: { id: deviceId },
+    context: { type: 'playlist', uri: playlistUri },
+    item: tracks[1],
+    is_playing: true,
+    shuffle_state: false,
+    repeat_state: 'off',
+    progress_ms: 0
+  };
+  await coordinator.poll();
+
+  assert.equal(store.get().active.id, 'request-2');
+  assert.equal(store.get().snapshot.nextOffset, 1);
+  assert.equal(spotify.restored.length, 0);
+  assert.equal(spotify.played.at(-1).uri, tracks[3].uri);
+
+  await coordinator.skip();
+  assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
+});
+
+test('does not advance a manually paused request', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  await coordinator.enqueue(request('request-1', { ...tracks[2], name: 'X' }));
+  spotify.current.is_playing = false;
+  spotify.current.progress_ms = 45000;
+  coordinator.started = true;
+
+  await coordinator.poll();
+
+  assert.equal(store.get().active.id, 'request-1');
+  assert.equal(store.get().mode, 'paused-request');
+  assert.equal(spotify.restored.length, 0);
+});
+
+test('hands control back on an unexpected manual track change and preserves the request', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  await coordinator.enqueue(request('request-1', { ...tracks[2], name: 'X' }));
+  spotify.current = {
+    device: { id: deviceId },
+    context: null,
+    item: { id: 'manual', uri: 'spotify:track:manual', duration_ms: 180000 },
+    is_playing: true
+  };
+  coordinator.started = true;
+
+  await coordinator.poll();
+
+  assert.equal(store.get().mode, 'handoff');
+  assert.equal(store.get().active, null);
+  assert.deepEqual(store.get().pending.map(item => item.id), ['request-1']);
+  assert.equal(spotify.restored.length, 0);
+});
+
+test('refuses to interrupt a playlist when a manual queue entry precedes its next track', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  spotify.getQueue = async () => [{ uri: 'spotify:track:manual' }, tracks[1]];
+  await assert.rejects(
+    coordinator.enqueue(request('request-1', { ...tracks[2], name: 'X' })),
+    /does not match/
+  );
+  assert.equal(spotify.played.length, 0);
+  assert.equal(store.get().active, null);
+  assert.equal(store.get().pending[0].id, 'request-1');
+});
+
+test('hands off instead of retrying when Spotify play cannot be confirmed', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  spotify.playTrack = async () => {};
+  await assert.rejects(
+    coordinator.enqueue(request('uncertain-request', { ...tracks[2], name: 'X' })),
+    /not confirmed/
+  );
+  assert.equal(store.get().mode, 'handoff');
+  assert.equal(store.get().active, null);
+  assert.equal(store.get().snapshot, null);
+  assert.deepEqual(store.get().pending.map(item => item.id), ['uncertain-request']);
+});
