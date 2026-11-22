@@ -190,6 +190,8 @@ async function bootstrap() {
       preflight: () => suite.preflight(),
       runPlaybackSequence: () => suite.runPlaybackSequence(),
       runRealChatSkipTest: timeoutMs => suite.runRealChatSkipTest(timeoutMs),
+      verifyProviderTokenRefresh: () => suite.verifyProviderTokenRefresh(),
+      verifyEventSubReconnect: timeoutMs => suite.verifyEventSubReconnect(timeoutMs),
       waitForRealRedemption: timeoutMs => suite.waitForRealRedemption(timeoutMs)
     };
   }
