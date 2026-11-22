@@ -167,6 +167,7 @@ export class TwitchEventSub {
           throw error;
         }
       }
+      this.subscribedSessionId = sessionId;
       return sessionId;
     } catch (error) {
       this.timers.clearTimeout(timeout);
