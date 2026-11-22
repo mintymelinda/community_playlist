@@ -25,7 +25,7 @@ export function isSkipCommand(event) {
 }
 
 export class TwitchEventSub {
-  constructor({ twitchAuth, broadcasterId, powerUpId, onRedemption, onChatCommand, store, logger = console, WebSocketImpl = WebSocket }) {
+  constructor({ twitchAuth, broadcasterId, powerUpId, onRedemption, onChatCommand, store, logger = console, WebSocketImpl = WebSocket, timers = globalThis }) {
     this.auth = twitchAuth;
     this.broadcasterId = broadcasterId;
     this.powerUpId = powerUpId;
@@ -34,6 +34,7 @@ export class TwitchEventSub {
     this.store = store;
     this.logger = logger;
     this.WebSocketImpl = WebSocketImpl;
+    this.timers = timers;
     this.socket = null;
     this.oldSocket = null;
     this.stopped = true;
@@ -81,7 +82,7 @@ export class TwitchEventSub {
       welcomeResolve = resolve;
       welcomeReject = reject;
     });
-    const timeout = setTimeout(() => welcomeReject(new Error('Timed out waiting for Twitch EventSub welcome.')), 15000);
+    const timeout = this.timers.setTimeout(() => welcomeReject(new Error('Timed out waiting for Twitch EventSub welcome.')), 15000);
 
     socket.addEventListener('open', () => {
       this.logger.info('[community-playlist] Twitch EventSub WebSocket connected.');
@@ -99,7 +100,7 @@ export class TwitchEventSub {
 
       const type = message.metadata?.message_type;
       if (type === 'session_welcome') {
-        clearTimeout(timeout);
+        this.timers.clearTimeout(timeout);
         const sessionId = message.payload?.session?.id;
         if (!sessionId) {
           welcomeReject(new Error('Twitch EventSub welcome did not include a session ID.'));
@@ -144,7 +145,7 @@ export class TwitchEventSub {
     });
 
     socket.addEventListener('close', () => {
-      clearTimeout(timeout);
+      this.timers.clearTimeout(timeout);
       if (socket === this.socket) this.scheduleReconnect();
     });
 
@@ -154,7 +155,7 @@ export class TwitchEventSub {
 
     try {
       const sessionId = await welcomed;
-      clearTimeout(timeout);
+      this.timers.clearTimeout(timeout);
       if (!migrating) {
         try {
           await this.subscribe(sessionId);
@@ -165,16 +166,16 @@ export class TwitchEventSub {
       }
       return sessionId;
     } catch (error) {
-      clearTimeout(timeout);
+      this.timers.clearTimeout(timeout);
       if (socket.readyState < 2) socket.close();
       throw error;
     }
   }
 
   startKeepaliveWatch(timeoutSeconds) {
-    clearInterval(this.keepaliveTimer);
+    this.timers.clearInterval(this.keepaliveTimer);
     this.lastMessageAt = Date.now();
-    this.keepaliveTimer = setInterval(() => {
+    this.keepaliveTimer = this.timers.setInterval(() => {
       if (this.stopped || !this.socket) return;
       if (Date.now() - this.lastMessageAt > timeoutSeconds * 1000 + 1000) {
         this.logger.warn('[community-playlist] Twitch EventSub keepalive timed out.');
@@ -217,7 +218,6 @@ export class TwitchEventSub {
     if (type === 'channel.custom_power_up_redemption.add') {
       const redemption = normalizeCustomPowerUpRedemption(event, this.broadcasterId, this.powerUpId);
       if (!redemption || !redemption.id) return;
-      if (!this.store.rememberRedemption(redemption.id)) return;
       await this.onRedemption(redemption);
       return;
     }
@@ -231,11 +231,11 @@ export class TwitchEventSub {
 
   scheduleReconnect() {
     if (this.stopped || this.reconnectTimer) return;
-    clearInterval(this.keepaliveTimer);
+    this.timers.clearInterval(this.keepaliveTimer);
     this.reconnectAttempts += 1;
     const wait = Math.min(30000, 1000 * (2 ** Math.min(this.reconnectAttempts, 5)));
     this.logger.warn('[community-playlist] Reconnecting Twitch EventSub in ' + wait + 'ms.');
-    this.reconnectTimer = setTimeout(async () => {
+    this.reconnectTimer = this.timers.setTimeout(async () => {
       this.reconnectTimer = null;
       try {
         await this.openSocket(EVENTSUB_URL, false);
@@ -248,8 +248,8 @@ export class TwitchEventSub {
 
   stop() {
     this.stopped = true;
-    clearTimeout(this.reconnectTimer);
-    clearInterval(this.keepaliveTimer);
+    this.timers.clearTimeout(this.reconnectTimer);
+    this.timers.clearInterval(this.keepaliveTimer);
     this.reconnectTimer = null;
     this.keepaliveTimer = null;
     if (this.socket && this.socket.readyState < 2) this.socket.close(1000, 'Controller stopped');

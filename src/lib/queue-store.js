@@ -4,6 +4,7 @@ const DEFAULT_STATE = Object.freeze({
   snapshot: null,
   lastRequestUri: null,
   processedRedemptions: [],
+  redemptionJobs: [],
   processedMessages: [],
   mode: 'idle',
   lastError: null,
@@ -31,6 +32,11 @@ export class QueueStore {
         ...saved,
         pending: Array.isArray(saved.pending) ? saved.pending : [],
         processedRedemptions: Array.isArray(saved.processedRedemptions) ? saved.processedRedemptions : [],
+        redemptionJobs: Array.isArray(saved.redemptionJobs)
+          ? saved.redemptionJobs.map(job => job?.status === 'processing'
+            ? { ...job, status: 'pending', lastError: 'Recovered an interrupted redemption; it will be retried.' }
+            : job)
+          : [],
         processedMessages: Array.isArray(saved.processedMessages) ? saved.processedMessages : []
       };
     } catch (error) {
@@ -51,6 +57,9 @@ export class QueueStore {
     }
     next.processedRedemptions = next.processedRedemptions.slice(-1000);
     next.processedMessages = next.processedMessages.slice(-1000);
+    const unresolved = next.redemptionJobs.filter(job => job.status === 'pending' || job.status === 'processing');
+    const settled = next.redemptionJobs.filter(job => job.status !== 'pending' && job.status !== 'processing').slice(-1000);
+    next.redemptionJobs = [...unresolved, ...settled];
     next.updatedAt = Date.now();
     this.storage.setItem(this.key, JSON.stringify(next));
     this.state = next;
@@ -64,6 +73,68 @@ export class QueueStore {
     return true;
   }
 
+  recordRedemption(redemption) {
+    if (!redemption?.id) return false;
+    if (this.state.processedRedemptions.includes(redemption.id)) return false;
+    if (this.state.redemptionJobs.some(job => job.id === redemption.id)) return false;
+    this.update(state => {
+      state.redemptionJobs.push({
+        id: redemption.id,
+        input: String(redemption.input || ''),
+        requester: redemption.requester || 'Viewer',
+        requesterId: redemption.requesterId || null,
+        status: 'pending',
+        attempts: 0,
+        lastError: null,
+        updatedAt: Date.now()
+      });
+    });
+    return true;
+  }
+
+  claimRedemption(id) {
+    const job = this.state.redemptionJobs.find(item => item.id === id);
+    if (!job || job.status !== 'pending') return null;
+    this.update(state => {
+      const current = state.redemptionJobs.find(item => item.id === id);
+      current.status = 'processing';
+      current.attempts += 1;
+      current.updatedAt = Date.now();
+      current.lastError = null;
+    });
+    return this.get().redemptionJobs.find(item => item.id === id) || null;
+  }
+
+  finishRedemption(id, status, error = null) {
+    const job = this.state.redemptionJobs.find(item => item.id === id);
+    if (!job) return false;
+    this.update(state => {
+      const current = state.redemptionJobs.find(item => item.id === id);
+      current.status = status;
+      current.lastError = error ? String(error) : null;
+      current.updatedAt = Date.now();
+      if (status === 'queued' || status === 'ignored') {
+        state.processedRedemptions.push(id);
+      }
+    });
+    return true;
+  }
+
+  retryRedemption(id, error) {
+    const job = this.state.redemptionJobs.find(item => item.id === id);
+    if (!job || job.status !== 'processing') return false;
+    return this.finishRedemption(id, 'pending', error);
+  }
+
+  getRetryableRedemptions() {
+    return this.get().redemptionJobs.filter(job => job.status === 'pending');
+  }
+
+  containsRequest(id) {
+    if (!id) return false;
+    return this.state.active?.id === id || this.state.pending.some(request => request.id === id);
+  }
+
   rememberMessage(id) {
     if (!id) return true;
     if (this.state.processedMessages.includes(id)) return false;
@@ -72,6 +143,7 @@ export class QueueStore {
   }
 
   enqueue(request) {
+    if (request?.id && this.containsRequest(request.id)) return false;
     if (this.state.pending.length >= this.maxPending) return false;
     this.update(state => state.pending.push(request));
     return true;

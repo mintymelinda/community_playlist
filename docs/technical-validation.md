@@ -10,7 +10,7 @@ The controller uses:
 
 The API identifies Custom Power-ups with \`GET /helix/bits/custom_power_ups?broadcaster_id=...\`. The controller selects an enabled, in-stock Power-up with \`is_user_input_required=true\`; when more than one exists, configuration must identify the correct Power-up. The redemption payload provides \`event.user_input\`, the redemption ID, user information, and Custom Power-up ID. Canceled redemptions are ignored; other statuses are treated as redemptions.
 
-Duplicate redemption IDs and EventSub message IDs are persisted to avoid replay. Chat \`!skip\` is accepted only when the chatter is the broadcaster or Twitch's event badges include the moderator/broadcaster badge. Usernames are not trusted for authorization.
+Redemptions are journaled before track resolution with \`pending\`, \`processing\`, \`queued\`, and \`ignored\` states. Transient Spotify/network failures return to \`pending\` and retry with bounded exponential backoff. On browser reload, interrupted \`processing\` records are recovered as \`pending\`. Queue insertion checks the redemption ID against both active and pending requests, preventing retries from inserting the same request twice. Chat message IDs remain separately deduplicated. Chat \`!skip\` is accepted only when the chatter is the broadcaster or Twitch's event badges include the moderator/broadcaster badge. Usernames are not trusted for authorization.
 
 Sources:
 
@@ -87,7 +87,7 @@ Source: [Spotify Start/Resume Playback policy notes](https://developer.spotify.c
 - [x] Twitch redemption and chat EventSub subscriptions.
 - [x] Separate FIFO queue, duplicate suppression, moderator-only skip, and recovery safeguards.
 - [x] Spotify request resolution, playback state polling, and playlist offset restoration implementation.
-- [x] Automated unit tests for parsing, authorization decisions, deduplication, queue ordering, playback sequencing, and restoration safeguards.
+- [x] Automated tests for parsing, authorization decisions, retryable redemption processing, concurrent duplicate delivery, queue idempotency, EventSub session migration/reconnect/keepalive/stop, playback sequencing, and restoration safeguards.
 - [ ] Real broadcaster Custom Power-up payload verified against a live channel.
 - [ ] Real Spotify Premium interruption/restoration sequence verified on the target Connect device.
 - [ ] Background-tab and browser-reload timing tested on the intended browser.

@@ -45,9 +45,11 @@ export class PlaybackCoordinator {
   }
 
   async enqueue(request) {
+    if (this.store.containsRequest(request.id)) return false;
     const accepted = this.store.enqueue(request);
     if (!accepted) throw new Error('The request queue is full. The redemption was not queued.');
     await this.serial.run(() => this.pump());
+    return true;
   }
 
   async skip() {

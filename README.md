@@ -10,10 +10,10 @@ Spotify itself handles all audio playback. This project does not capture, proces
 - Automatic discovery of the broadcaster's Custom Power-ups; selects the only enabled, in-stock text-input Power-up or requires an explicit ID if several are available.
 - Twitch EventSub WebSocket subscriptions for Custom Power-up redemptions and chat messages, including keepalive, session migration, reconnect, and duplicate-delivery handling.
 - Spotify Authorization Code with PKCE, token refresh, device selection, playlist inspection, Spotify track URL/URI parsing, and text search.
-- Persistent application-owned FIFO request queue, redemption deduplication, serialized playback changes, and conservative browser-reload recovery.
+- Persistent application-owned FIFO request queue, retryable redemption intake, request-ID idempotency, serialized playback changes, and conservative browser-reload recovery.
 - Broadcaster/moderator-only \`!skip\`, advancing directly to the next viewer request without calling Spotify's playlist skip endpoint.
 - Playback safeguards for manual queue entries, shuffle/repeat, changed devices, manual playback changes, duplicate playlist tracks, unavailable playlist items, and unexpected playlist edits.
-- Automated tests for OAuth-related helpers, Twitch redemption/chat authorization, request ordering, skip behaviour, storage recovery, Spotify parsing, and playlist restore-position resolution.
+- Automated tests for OAuth-related helpers, Twitch redemption/chat authorization, retry and duplicate-delivery handling, EventSub reconnect/migration/keepalive lifecycle, request ordering, skip behaviour, storage recovery, Spotify parsing, and playlist restore-position resolution.
 
 ## Requirements
 
@@ -61,7 +61,7 @@ communityPlaylist.stop()
 communityPlaylist.resume()
 \`\`\`
 
-The controller must remain open and the browser must continue executing the tab. Browser shutdown, tab discard, device sleep, or suspended execution can delay request handling. Queue state and processed redemption IDs are stored in \`localStorage\`; Twitch/Spotify access and refresh tokens plus the Spotify PKCE verifier are stored in \`sessionStorage\`. Closing the tab clears those session tokens and requires authorization again.
+The controller must remain open and the browser must continue executing the tab. Browser shutdown, tab discard, device sleep, or suspended execution can delay request handling. Queue state, processed redemption IDs, and retryable redemption intake records are stored in \`localStorage\`; Twitch/Spotify access and refresh tokens plus the Spotify PKCE verifier are stored in \`sessionStorage\`. A redemption is saved before Spotify lookup, transient failures are retried with bounded exponential backoff, and interrupted processing is recovered after reload. Request IDs are checked against active and pending playback entries to prevent duplicate insertion. Closing the tab clears those session tokens and requires authorization again.
 
 \`stop()\` closes EventSub and stops playback polling. It deliberately does not pause Spotify or alter the current track. \`resume()\` is available after a manual playback change has put the queue into handoff mode; it requires the configured playlist to be playing again.
 
