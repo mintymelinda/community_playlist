@@ -6,7 +6,6 @@ import { SpotifyClient } from './spotify/client.js';
 import { TwitchEventSub } from './twitch/eventsub.js';
 import { RedemptionProcessor } from './twitch/redemption-processor.js';
 import { PlaybackCoordinator } from './playback/coordinator.js';
-import { createLiveE2ESuite } from './e2e/live-suite.js';
 
 const AUTO_START_KEY = 'community-playlist-auto-start';
 
@@ -185,6 +184,7 @@ async function bootstrap() {
   };
 
   if (app.e2eMode) {
+    const { createLiveE2ESuite } = await import('./e2e/live-suite.js');
     const suite = createLiveE2ESuite(app);
     globalThis.communityPlaylist.e2e = {
       preflight: () => suite.preflight(),
