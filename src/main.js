@@ -189,6 +189,7 @@ async function bootstrap() {
     globalThis.communityPlaylist.e2e = {
       preflight: () => suite.preflight(),
       runPlaybackSequence: () => suite.runPlaybackSequence(),
+      runRealChatSkipTest: timeoutMs => suite.runRealChatSkipTest(timeoutMs),
       waitForRealRedemption: timeoutMs => suite.waitForRealRedemption(timeoutMs)
     };
   }
