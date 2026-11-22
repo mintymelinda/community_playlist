@@ -131,6 +131,8 @@ test('opens EventSub and subscribes to redemption and broadcaster chat events', 
   const socket = await connect(env.eventSub);
 
   assert.equal(env.eventSub.socket, socket);
+  assert.equal(env.eventSub.sessionId, 'session-1');
+  assert.equal(env.eventSub.subscribedSessionId, 'session-1');
   assert.deepEqual(env.subscriptions.map(item => item.type), [
     'channel.custom_power_up_redemption.add',
     'channel.chat.message'
@@ -176,6 +178,8 @@ test('migrates to Twitch reconnect URL without duplicating subscriptions', async
 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(env.eventSub.socket, migratedSocket);
+  assert.equal(env.eventSub.sessionId, 'session-2');
+  assert.equal(env.eventSub.subscribedSessionId, 'session-2');
   assert.equal(oldSocket.readyState, 3);
   assert.equal(env.subscriptions.length, 2);
   env.eventSub.stop();
@@ -194,6 +198,8 @@ test('reconnects after an unexpected socket close and re-subscribes', async () =
   await reconnecting;
 
   assert.equal(env.eventSub.socket, secondSocket);
+  assert.equal(env.eventSub.sessionId, 'session-2');
+  assert.equal(env.eventSub.subscribedSessionId, 'session-2');
   assert.equal(env.subscriptions.length, 4);
   env.eventSub.stop();
 });
