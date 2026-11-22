@@ -168,14 +168,7 @@ export class PlaybackCoordinator {
       });
       this.logger.info('[community-playlist] Playing request: ' + request.title + ' (' + request.requester + ').');
     } catch (error) {
-      this.store.update(next => {
-        if (next.active?.id === request.id) {
-          next.pending.unshift(request);
-          next.active = null;
-          next.mode = 'error';
-          next.lastError = error.message;
-        }
-      });
+      this.handoff('Could not confirm whether Spotify started the request. The request was preserved for manual recovery. ' + error.message);
       throw error;
     }
   }

@@ -172,3 +172,16 @@ test('refuses to interrupt a playlist when a manual queue entry precedes its nex
   assert.equal(store.get().active, null);
   assert.equal(store.get().pending[0].id, 'request-1');
 });
+
+test('hands off instead of retrying when Spotify play cannot be confirmed', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  spotify.playTrack = async () => {};
+  await assert.rejects(
+    coordinator.enqueue(request('uncertain-request', { ...tracks[2], name: 'X' })),
+    /not confirmed/
+  );
+  assert.equal(store.get().mode, 'handoff');
+  assert.equal(store.get().active, null);
+  assert.equal(store.get().snapshot, null);
+  assert.deepEqual(store.get().pending.map(item => item.id), ['uncertain-request']);
+});
