@@ -8,7 +8,9 @@ The application is intentionally UI-free. A read-only Now Playing display may be
 
 ## Status
 
-The project is in Phase 1: repository foundation and technical validation. See [the roadmap issue](https://github.com/mintymelinda/community_playlist/issues/1) and the technical validation report (to be added in the Phase 1 pull request).
+The project is in Phase 1: repository foundation and technical validation. See the [roadmap issue](https://github.com/mintymelinda/community_playlist/issues/1) and [the Phase 1 technical validation report](docs/technical-validation.md).
+
+The report separates documented API behaviour from unverified assumptions. In particular, the Spotify playlist interruption/restoration strategy is not yet proven against a real account and device.
 
 ## Constraints
 
