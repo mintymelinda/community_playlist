@@ -225,3 +225,30 @@ test('stop closes active sockets and cancels reconnect and keepalive timers', as
   assert.equal(env.timers.intervals.size, 0);
   assert.equal(env.eventSub.socket, null);
 });
+
+
+test('ignores unauthorized real chat messages and deduplicates authorized !skip events', async () => {
+  const env = createEventSub();
+  const unauthorized = chatNotification(
+    broadcasterId,
+    'ordinary-viewer',
+    'unauthorized-skip'
+  );
+  await env.eventSub.handleNotification(unauthorized);
+
+  assert.equal(env.commands.length, 0);
+  assert.equal(env.eventSub.store.messages.has('unauthorized-skip'), false);
+
+  const authorized = chatNotification(
+    broadcasterId,
+    'moderator-1',
+    'authorized-skip',
+    [{ set_id: 'moderator', id: '1' }]
+  );
+  await env.eventSub.handleNotification(authorized);
+  await env.eventSub.handleNotification(authorized);
+
+  assert.equal(env.commands.length, 1);
+  assert.equal(env.commands[0].command, 'skip');
+  assert.equal(env.eventSub.store.messages.has('authorized-skip'), true);
+});
