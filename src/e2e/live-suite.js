@@ -1,3 +1,5 @@
+import { isAuthorizedSkip, isSkipCommand } from '../twitch/eventsub.js';
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -202,9 +204,137 @@ export function createLiveE2ESuite(app) {
     throw new Error('Timed out waiting for a real Twitch Custom Power-up redemption.');
   }
 
+
+  async function waitForRealSkipMessage(expectedAuthorized, timeoutMs = 120000) {
+    assert(app.eventSub?.socket?.readyState === 1, 'Connect the controller to Twitch EventSub first.');
+    const eventSub = app.eventSub;
+    const hadOwnHandler = Object.hasOwn(eventSub, 'handleNotification');
+    const previousHandler = eventSub.handleNotification;
+    const originalHandler = previousHandler.bind(eventSub);
+    let observed = null;
+
+    eventSub.handleNotification = async message => {
+      const type = message.payload?.subscription?.type;
+      const event = message.payload?.event;
+      if (type !== 'channel.chat.message' || !isSkipCommand(event)) {
+        return originalHandler(message);
+      }
+
+      const authorized = isAuthorizedSkip(event, app.broadcasterId);
+      let delivered = false;
+      const previousCallback = eventSub.onChatCommand;
+      eventSub.onChatCommand = async command => {
+        delivered = true;
+        return previousCallback(command);
+      };
+
+      try {
+        await originalHandler(message);
+      } finally {
+        eventSub.onChatCommand = previousCallback;
+      }
+
+      observed = {
+        authorized,
+        delivered,
+        chatterId: event.chatter_user_id,
+        messageId: message.metadata?.message_id || event.message_id || null
+      };
+    };
+
+    console.info(expectedAuthorized
+      ? '[community-playlist:e2e] Send !skip in Twitch chat from the broadcaster or an authorized moderator now.'
+      : '[community-playlist:e2e] Send !skip in Twitch chat from an ordinary viewer who is not a moderator now.');
+
+    try {
+      const result = await waitFor(
+        expectedAuthorized ? 'an authorized real Twitch !skip message' : 'an unauthorized real Twitch !skip message',
+        async () => observed,
+        timeoutMs
+      );
+      assert(result.authorized === expectedAuthorized,
+        expectedAuthorized
+          ? 'The observed !skip message was not sent by the broadcaster or a moderator.'
+          : 'The observed !skip message was sent by the broadcaster or a moderator.');
+      assert(result.delivered === expectedAuthorized,
+        expectedAuthorized
+          ? 'The authorized Twitch !skip message was not delivered to the coordinator.'
+          : 'An unauthorized Twitch !skip message reached the coordinator.');
+      return result;
+    } finally {
+      if (hadOwnHandler) eventSub.handleNotification = previousHandler;
+      else delete eventSub.handleNotification;
+    }
+  }
+
+  async function runRealChatSkipTest(timeoutMs = 120000) {
+    const checks = [];
+    let completed = false;
+    const runId = 'community-playlist-live-chat-' + crypto.randomUUID();
+    try {
+      const { snapshot, trackX, trackY } = await preflight();
+      const playlistBefore = (await app.spotify.getPlaylistItems(app.coordinator.playlistId)).map(item => item?.uri || null);
+      const firstId = runId + '-redemption-x';
+      const secondId = runId + '-redemption-y';
+
+      await injectRedemption(firstId, app.config.e2eTrackX);
+      await waitForTrack(trackX.uri, 'request X for the real chat skip test');
+      await injectRedemption(secondId, app.config.e2eTrackY);
+      assert(app.store.get().active?.id === firstId, 'Request X was not active before the live chat test.');
+      assert(app.store.get().pending[0]?.id === secondId, 'Request Y was not pending before the live chat test.');
+      checks.push({ name: 'Prepared X and Y through the live Spotify playback path', passed: true });
+
+      const unauthorized = await waitForRealSkipMessage(false, timeoutMs);
+      const [afterUnauthorizedPlayback, afterUnauthorizedState] = await Promise.all([
+        app.spotify.getPlaybackState(),
+        Promise.resolve(app.store.get())
+      ]);
+      assert(afterUnauthorizedPlayback?.item?.uri === trackX.uri, 'An unauthorized real Twitch !skip changed Spotify playback.');
+      assert(afterUnauthorizedState.active?.id === firstId, 'An unauthorized real Twitch !skip changed the active request.');
+      assert(afterUnauthorizedState.pending[0]?.id === secondId, 'An unauthorized real Twitch !skip changed the pending request.');
+      checks.push({ name: 'A real non-moderator !skip is ignored', passed: true, chatterId: unauthorized.chatterId });
+
+      const authorized = await waitForRealSkipMessage(true, timeoutMs);
+      await waitForTrack(trackY.uri, 'request Y after a real broadcaster/moderator !skip');
+      assert(app.store.get().active?.id === secondId, 'The real broadcaster/moderator !skip did not advance to request Y.');
+      checks.push({ name: 'A real broadcaster/moderator !skip advances to Y', passed: true, chatterId: authorized.chatterId });
+
+      await app.coordinator.skip();
+      await waitFor('the saved playlist continuation to resume', async () => {
+        const [playback, state] = await Promise.all([
+          app.spotify.getPlaybackState(),
+          Promise.resolve(app.store.get())
+        ]);
+        return playback?.context?.uri === app.config.playlistUri &&
+          playback?.item?.uri === snapshot.nextTrackUri &&
+          state.mode === 'idle' &&
+          !state.active &&
+          state.pending.length === 0 &&
+          !state.snapshot;
+      });
+      const playlistAfter = (await app.spotify.getPlaylistItems(app.coordinator.playlistId)).map(item => item?.uri || null);
+      assert(JSON.stringify(playlistAfter) === JSON.stringify(playlistBefore), 'The Spotify playlist changed during the real chat test.');
+      checks.push({ name: 'Playlist restored to its saved next track without playlist mutation', passed: true });
+
+      completed = true;
+      return { passed: true, runId, checks };
+    } catch (error) {
+      checks.push({ name: 'Real Twitch chat skip sequence', passed: false, error: error.message });
+      return { passed: false, runId, checks };
+    } finally {
+      if (!completed) {
+        const state = app.store.get();
+        if (state.active || state.snapshot) {
+          app.coordinator.handoff('The real chat skip E2E test stopped before playlist restoration could be verified. Requests were preserved for manual recovery.');
+        }
+      }
+    }
+  }
+
   return {
     preflight,
     runPlaybackSequence,
+    runRealChatSkipTest,
     waitForRealRedemption
   };
 }
