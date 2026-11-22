@@ -1,0 +1,10 @@
+{
+  "name": "community-playlist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Headless Twitch Custom Power-up to Spotify playlist controller",
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/main.js"
+  }
+}
