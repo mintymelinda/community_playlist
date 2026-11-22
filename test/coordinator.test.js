@@ -185,3 +185,16 @@ test('hands off instead of retrying when Spotify play cannot be confirmed', asyn
   assert.equal(store.get().snapshot, null);
   assert.deepEqual(store.get().pending.map(item => item.id), ['uncertain-request']);
 });
+
+
+test('does not replay a request when an EventSub redemption is delivered twice', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  const duplicate = request('redemption-duplicate', { ...tracks[2], name: 'X' });
+
+  assert.equal(await coordinator.enqueue(duplicate), true);
+  assert.equal(await coordinator.enqueue(duplicate), false);
+
+  assert.equal(store.get().active.id, 'redemption-duplicate');
+  assert.equal(store.get().pending.length, 0);
+  assert.equal(spotify.played.length, 1);
+});
