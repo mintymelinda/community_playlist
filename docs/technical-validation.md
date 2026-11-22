@@ -35,7 +35,7 @@ await communityPlaylist.e2e.runPlaybackSequence()
 
 This sequence synthesizes Twitch notification payloads at the connected EventSub handler boundary, but uses actual Spotify search/track lookup, player state, playback commands and queue reads. It verifies request X then Y, unauthorized skip rejection, broadcaster skip, restoration to the exact saved next playlist track, and no playlist mutation. It does not validate delivery of a real Twitch notification.
 
-For that separate check, call `await communityPlaylist.e2e.waitForRealRedemption()` and then redeem the configured Custom Power-up on Twitch. This test performs a real redemption and may spend Bits. The local E2E queue and OAuth session namespace are distinct from normal browser app storage.
+For real Twitch transport validation, call `await communityPlaylist.e2e.waitForRealRedemption()` and then redeem the configured Custom Power-up. This is a real redemption and may spend Bits. To exercise actual chat EventSub delivery and permissions, call `await communityPlaylist.e2e.runRealChatSkipTest()`; it prompts for an unauthorized viewer `!skip` followed by a broadcaster/moderator `!skip`, and verifies both effects against live Spotify playback. The local E2E queue and OAuth session namespace are distinct from normal browser app storage.
 
 The test harness is safety-first: if playback validation fails after the sequence has started, it enters handoff and preserves remaining requests rather than attempting an unverified restoration. Inspect the current status and manually re-establish the configured playlist before invoking `communityPlaylist.resume()`.
 
