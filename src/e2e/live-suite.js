@@ -189,6 +189,77 @@ export function createLiveE2ESuite(app) {
     }
   }
 
+
+  async function verifyProviderTokenRefresh() {
+    assert(app.started, 'Start the controller before testing OAuth token refresh.');
+    assert(app.twitchAuth.session?.refreshToken, 'Twitch refresh token is not available; reauthorize the broadcaster.');
+    assert(app.spotifyAuth.session?.refreshToken, 'Spotify refresh token is not available; reauthorize Spotify.');
+
+    app.twitchAuth.session.expiresAt = 0;
+    app.twitchAuth.tokenStore.save(app.twitchAuth.session);
+    await app.twitchAuth.getAccessToken();
+    const twitchIdentity = await app.twitchAuth.validate();
+    assert(String(twitchIdentity.user_id) === String(app.broadcasterId), 'Twitch identity changed after token refresh.');
+    assert(app.twitchAuth.session.expiresAt > Date.now(), 'Twitch token expiry was not updated after refresh.');
+
+    app.spotifyAuth.session.expiresAt = 0;
+    app.spotifyAuth.tokenStore.save(app.spotifyAuth.session);
+    await app.spotifyAuth.getAccessToken();
+    const playback = await app.spotify.getPlaybackState();
+    assert(playback !== null, 'Spotify API did not return playback state after token refresh.');
+    assert(app.spotifyAuth.session.expiresAt > Date.now(), 'Spotify token expiry was not updated after refresh.');
+
+    return {
+      passed: true,
+      checks: [
+        { name: 'Twitch refresh-token rotation and broadcaster validation', passed: true },
+        { name: 'Spotify PKCE refresh-token grant and playback API access', passed: true }
+      ]
+    };
+  }
+
+  async function verifyEventSubReconnect(timeoutMs = 45000) {
+    assert(app.eventSub?.socket?.readyState === 1, 'Twitch EventSub WebSocket is not connected.');
+    const eventSub = app.eventSub;
+    const previousSocket = eventSub.socket;
+    const previousSessionId = eventSub.sessionId;
+    assert(previousSessionId, 'The current EventSub session ID is unavailable.');
+
+    previousSocket.close(4000, 'Requested by live E2E reconnect test');
+
+    const session = await waitFor('a new EventSub session and completed subscription registration', async () => {
+      if (
+        eventSub.socket &&
+        eventSub.socket !== previousSocket &&
+        eventSub.socket.readyState === 1 &&
+        eventSub.sessionId &&
+        eventSub.sessionId !== previousSessionId &&
+        eventSub.subscribedSessionId === eventSub.sessionId
+      ) {
+        return { sessionId: eventSub.sessionId };
+      }
+      return null;
+    }, timeoutMs);
+
+    const response = await app.twitchAuth.api('/eventsub/subscriptions?status=enabled&first=100');
+    const types = (response.data || [])
+      .filter(subscription =>
+        subscription.transport?.method === 'websocket' &&
+        subscription.transport?.session_id === session.sessionId
+      )
+      .map(subscription => subscription.type);
+    assert(types.includes('channel.custom_power_up_redemption.add'), 'Twitch did not register the redemption subscription on the new session.');
+    assert(types.includes('channel.chat.message'), 'Twitch did not register the chat subscription on the new session.');
+
+    return {
+      passed: true,
+      checks: [
+        { name: 'Unexpected WebSocket close reconnects', passed: true },
+        { name: 'Both EventSub subscriptions are active on the replacement session', passed: true, subscriptionTypes: types }
+      ]
+    };
+  }
+
   async function waitForRealRedemption(timeoutMs = 120000) {
     assert(app.started && app.eventSub?.socket?.readyState === 1, 'Connect the controller to Twitch EventSub first.');
     const existing = new Set(app.store.get().redemptionJobs.map(job => job.id));
@@ -335,6 +406,8 @@ export function createLiveE2ESuite(app) {
     preflight,
     runPlaybackSequence,
     runRealChatSkipTest,
+    verifyProviderTokenRefresh,
+    verifyEventSubReconnect,
     waitForRealRedemption
   };
 }
