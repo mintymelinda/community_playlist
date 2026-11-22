@@ -83,6 +83,23 @@ function welcome(sessionId) {
   };
 }
 
+
+function chatNotification(broadcasterId, chatterId, messageId, badges = []) {
+  return {
+    metadata: { message_type: 'notification', message_id: messageId },
+    payload: {
+      subscription: { type: 'channel.chat.message' },
+      event: {
+        broadcaster_user_id: broadcasterId,
+        chatter_user_id: chatterId,
+        chatter_user_name: 'E2E Test',
+        badges,
+        message: { text: '!skip' }
+      }
+    }
+  };
+}
+
 function createEventSub() {
   FakeWebSocket.instances = [];
   const timers = new FakeTimers();
