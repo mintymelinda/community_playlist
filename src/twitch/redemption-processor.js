@@ -39,6 +39,11 @@ export class RedemptionProcessor {
     const job = this.store.claimRedemption(id);
     if (!job) return false;
 
+    if (this.store.containsRequest(id)) {
+      this.store.finishRedemption(id, 'queued');
+      return true;
+    }
+
     const input = String(job.input || '').trim();
     if (!input) {
       this.store.finishRedemption(id, 'ignored', 'The redemption contained empty song input.');
@@ -104,7 +109,7 @@ export class RedemptionProcessor {
     const delay = Math.min(this.retryMaxMs, this.retryBaseMs * (2 ** exponent));
     const timer = this.timers.setTimeout(() => {
       this.retryTimers.delete(id);
-      this.process(id).catch(error => {
+      return this.process(id).catch(error => {
         this.logger.error('[community-playlist] Redemption retry failed unexpectedly:', error);
       });
     }, delay);
