@@ -29,8 +29,6 @@ jobs:
       TWITCH_BROADCASTER_ID: ${{ vars.TWITCH_BROADCASTER_ID }}
       TWITCH_POWER_UP_ID: ${{ vars.TWITCH_POWER_UP_ID }}
       SPOTIFY_DEVICE_ID: ${{ vars.SPOTIFY_DEVICE_ID }}
-      TWITCH_ACCESS_TOKEN: ${{ secrets.TWITCH_ACCESS_TOKEN }}
-      SPOTIFY_ACCESS_TOKEN: ${{ secrets.SPOTIFY_ACCESS_TOKEN }}
       RUN_REAL_CHAT_TEST: ${{ inputs.run_real_chat_test }}
     steps:
       - name: Check out repository
@@ -51,4 +49,7 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
 
       - name: Run live Twitch and Spotify E2E
+        env:
+          TWITCH_ACCESS_TOKEN: ${{ secrets.TWITCH_ACCESS_TOKEN }}
+          SPOTIFY_ACCESS_TOKEN: ${{ secrets.SPOTIFY_ACCESS_TOKEN }}
         run: node scripts/e2e/ci-runner.js
