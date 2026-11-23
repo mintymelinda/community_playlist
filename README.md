@@ -116,7 +116,7 @@ Register this exact Spotify redirect URI in the Spotify developer dashboard:
 
 `http://127.0.0.1:4173/`
 
-Add these repository **Actions variables**:
+Add these repository **Actions variables** (the workflow also accepts the same configuration names from repository Actions secrets, if you already stored them there):
 
 - `TWITCH_CLIENT_ID`
 - `SPOTIFY_CLIENT_ID`
