@@ -41,9 +41,11 @@ async function readJsonResponse(response, provider) {
 async function obtainSpotifyAccessToken() {
   const key = required('SPOTIFY_PKCE_HANDOFF_KEY');
   const callbackValue = required('SPOTIFY_CALLBACK_URL');
+  console.info('::add-mask::' + callbackValue);
   const envelope = JSON.parse(await readFile('.ci-auth/spotify-pkce-handoff.json', 'utf8'));
   const handoff = decryptSpotifyPkceHandoff(envelope, key);
   const callback = parseSpotifyCallbackUrl(callbackValue, handoff);
+  console.info('::add-mask::' + callback.code);
 
   const response = await fetch(SPOTIFY_TOKEN_URL, {
     method: 'POST',
