@@ -59,5 +59,5 @@ test('Spotify PKCE handoff refuses redirect URIs outside its fixed loopback call
   assert.throws(() => createSpotifyPkceHandoff({
     clientId: 'spotify-public-client',
     redirectUri: 'https://example.test/callback'
-  }), /loopback redirect URI/);
+  }), /CI redirect URI/);
 });
