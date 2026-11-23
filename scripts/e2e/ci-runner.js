@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { startE2EServer } from './server.js';
+import { TwitchAuth } from '../../src/auth/twitch-auth.js';
+import { TokenStore } from '../../src/lib/token-store.js';
 import {
   decryptSpotifyPkceHandoff,
   parseSpotifyCallbackUrl,
@@ -8,9 +10,6 @@ import {
 
 const TWITCH_SCOPES = ['bits:read', 'user:read:chat'];
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const TWITCH_DEVICE_URL = 'https://id.twitch.tv/oauth2/device';
-const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
-const TWITCH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
 
 function required(name) {
   const value = String(process.env[name] || '').trim();
@@ -29,13 +28,22 @@ async function appendSummary(markdown) {
   }
 }
 
-async function readJsonResponse(response, provider) {
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = body.error_description || body.message || body.error || 'unknown error';
-    throw new Error(provider + ' request failed (HTTP ' + response.status + '): ' + detail);
+class MemoryStorage {
+  constructor() {
+    this.values = new Map();
   }
-  return body;
+
+  getItem(key) {
+    return this.values.has(key) ? this.values.get(key) : null;
+  }
+
+  setItem(key, value) {
+    this.values.set(key, String(value));
+  }
+
+  removeItem(key) {
+    this.values.delete(key);
+  }
 }
 
 async function obtainSpotifyAccessToken() {
@@ -58,10 +66,13 @@ async function obtainSpotifyAccessToken() {
       code_verifier: handoff.verifier
     })
   });
-  const token = await readJsonResponse(response, 'Spotify OAuth');
-  if (!token.access_token) throw new Error('Spotify OAuth did not return an access token.');
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error('Spotify OAuth token exchange failed (HTTP ' + response.status + '): ' + (body.error_description || body.error || 'unknown error'));
+  }
+  if (!body.access_token) throw new Error('Spotify OAuth did not return an access token.');
 
-  const scopes = String(token.scope || '').split(' ').filter(Boolean);
+  const scopes = String(body.scope || '').split(' ').filter(Boolean);
   const missingScopes = SPOTIFY_SCOPES.filter(scope => !scopes.includes(scope));
   if (missingScopes.length) {
     throw new Error('Spotify authorization is missing required scopes: ' + missingScopes.join(', ') + '. Start a new Spotify authorization stage and approve all permissions.');
@@ -69,100 +80,45 @@ async function obtainSpotifyAccessToken() {
 
   console.info('[community-playlist:ci] Spotify PKCE authorization and token exchange: PASS.');
   return {
-    accessToken: token.access_token,
-    expiresIn: Number(token.expires_in) || 3600,
+    accessToken: body.access_token,
+    expiresIn: Number(body.expires_in) || 3600,
     scopes
   };
 }
 
 async function authorizeTwitchDeviceCode() {
-  const clientId = required('TWITCH_CLIENT_ID');
-  const deviceResponse = await fetch(TWITCH_DEVICE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: clientId,
-      scopes: TWITCH_SCOPES.join(' ')
-    })
+  const twitchAuth = new TwitchAuth({
+    clientId: required('TWITCH_CLIENT_ID'),
+    scopes: TWITCH_SCOPES,
+    tokenStore: new TokenStore(new MemoryStorage(), 'community-playlist-ci-twitch-token'),
+    onDeviceCode: info => {
+      const prompt = [
+        '## Twitch broadcaster approval required',
+        '',
+        '1. Open [' + info.verificationUri + '](' + info.verificationUri + ').',
+        '2. Enter this one-time code: **' + info.userCode + '**.',
+        '3. Approve the requested permissions using the broadcaster account configured for this channel.',
+        '',
+        'The workflow is waiting for approval and will continue automatically.',
+        ''
+      ].join('\n');
+      appendSummary(prompt).catch(() => {});
+      console.info('[community-playlist:ci] Twitch approval required. Open ' + info.verificationUri + ' and enter code ' + info.userCode + '.');
+    }
   });
-  const device = await readJsonResponse(deviceResponse, 'Twitch device authorization');
-  if (!device.device_code || !device.user_code || !device.verification_uri) {
-    throw new Error('Twitch returned an incomplete Device Code response.');
-  }
 
-  const prompt = [
-    '## Twitch broadcaster approval required',
-    '',
-    '1. Open [' + device.verification_uri + '](' + device.verification_uri + ').',
-    '2. Enter this one-time code: **' + device.user_code + '**.',
-    '3. Approve the requested permissions using the broadcaster account configured for this channel.',
-    '',
-    'The workflow is waiting for approval and will continue automatically.',
-    ''
-  ].join('\n');
-  await appendSummary(prompt);
-  console.info('[community-playlist:ci] Twitch approval required. Open ' + device.verification_uri + ' and enter code ' + device.user_code + '.');
-
-  const expiresAt = Date.now() + (Number(device.expires_in) || 1800) * 1000;
-  let intervalMs = Math.max(1, Number(device.interval) || 5) * 1000;
-  let token = null;
-
-  while (Date.now() < expiresAt) {
-    await new Promise(resolve => setTimeout(resolve, intervalMs));
-    const response = await fetch(TWITCH_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        device_code: device.device_code,
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
-      })
-    });
-    const body = await response.json().catch(() => ({}));
-    if (response.ok) {
-      token = body;
-      break;
-    }
-
-    const oauthError = body.message || body.error;
-    if (oauthError === 'authorization_pending') continue;
-    if (oauthError === 'slow_down') {
-      intervalMs += 5000;
-      continue;
-    }
-    if (oauthError === 'expired_token' || oauthError === 'invalid device code') {
-      throw new Error('Twitch Device Code expired. Start a new live E2E run.');
-    }
-    if (oauthError === 'access_denied') {
-      throw new Error('Twitch broadcaster denied the Device Code authorization.');
-    }
-    throw new Error('Twitch Device Code token request failed (HTTP ' + response.status + '): ' + (oauthError || 'unknown error'));
-  }
-
-  if (!token?.access_token) throw new Error('Twitch Device Code authorization timed out.');
-
-  const validationResponse = await fetch(TWITCH_VALIDATE_URL, {
-    headers: { Authorization: 'OAuth ' + token.access_token }
-  });
-  const identity = await readJsonResponse(validationResponse, 'Twitch token validation');
-  if (identity.client_id !== clientId) throw new Error('Twitch token belongs to a different Client ID.');
-  const granted = new Set(identity.scopes || []);
-  const missingScopes = TWITCH_SCOPES.filter(scope => !granted.has(scope));
-  if (missingScopes.length) {
-    throw new Error('Twitch authorization is missing required scopes: ' + missingScopes.join(', ') + '. Start a new live E2E run and approve all permissions.');
-  }
-
+  await twitchAuth.authorize();
   const expectedBroadcaster = optional('TWITCH_BROADCASTER_ID');
-  if (expectedBroadcaster && String(identity.user_id) !== expectedBroadcaster) {
+  if (expectedBroadcaster && String(twitchAuth.identity?.user_id) !== expectedBroadcaster) {
     throw new Error('The Twitch account that approved Device Code authorization does not match TWITCH_BROADCASTER_ID.');
   }
 
   console.info('[community-playlist:ci] Twitch Device Code authorization and broadcaster validation: PASS.');
   return {
-    accessToken: token.access_token,
-    expiresIn: Number(token.expires_in) || 14400,
-    scopes: identity.scopes || TWITCH_SCOPES,
-    userId: identity.user_id
+    accessToken: twitchAuth.session.accessToken,
+    expiresIn: Math.max(60, (twitchAuth.session.expiresAt - Date.now()) / 1000),
+    scopes: twitchAuth.identity.scopes || TWITCH_SCOPES,
+    userId: twitchAuth.identity.user_id
   };
 }
 
