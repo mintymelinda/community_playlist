@@ -106,6 +106,31 @@ E2E mode uses separate `sessionStorage` token keys and a separate `localStorage`
 
 If a test is interrupted after a Spotify command, the harness enters the coordinator's safe handoff mode and preserves remaining requests rather than blindly issuing another play or restore command. Inspect `communityPlaylist.status()` before using `communityPlaylist.resume()`.
 
+## Live E2E through GitHub Actions
+
+The live-account suite can also run from **Actions → Live Twitch and Spotify E2E → Run workflow**. It starts Chromium on a GitHub-hosted runner and controls the configured Spotify Connect device through the real Spotify Web API.
+
+Add these repository **Actions variables**:
+
+- `TWITCH_CLIENT_ID`
+- `SPOTIFY_CLIENT_ID`
+- `SPOTIFY_PLAYLIST_URI`
+- `E2E_TRACK_X` and `E2E_TRACK_Y` (different Spotify track URIs or URLs)
+- Optional: `TWITCH_BROADCASTER_ID`, `TWITCH_POWER_UP_ID`, `SPOTIFY_DEVICE_ID`
+
+Add these repository **Actions secrets**:
+
+- `TWITCH_ACCESS_TOKEN`
+- `SPOTIFY_ACCESS_TOKEN`
+
+The access tokens must be fresh and carry the scopes listed in this README. The Twitch token must belong to the broadcaster. The Spotify token must belong to the Premium account whose playlist and Connect device are under test. This CI runner deliberately does not accept or refresh refresh-tokens: Twitch refresh tokens are single-use/rotating, and the workflow cannot safely write rotated credentials back into repository secrets. Replace the access-token secrets when they expire. Never put tokens in Actions variables or workflow inputs.
+
+Before running the workflow, start the configured Spotify playlist on the target Connect device, turn shuffle and repeat off, and make sure the playlist has an upcoming track. The test tracks X and Y must differ from each other, the current track, and the next playlist track. Run only one live test at a time; the workflow enforces this with a concurrency group.
+
+The default run performs the live Spotify playback/interruption/restore sequence and tests Twitch EventSub reconnection. It uses synthetic redemption notifications at the EventSub handler boundary, so it does not redeem a real Power-up or spend Bits. Selecting `run_real_chat_test` additionally waits for an ordinary viewer to send `!skip`, then for the broadcaster or a moderator to send `!skip` in the channel chat while the workflow is running. It does not automate a real Power-up redemption.
+
+The live job is manually triggered and does not run on pushes or pull requests. If a playback test fails after taking over Spotify, the application enters handoff mode; the workflow log reports the failure, but the test cannot guarantee automatic restoration after an interrupted run. Check Spotify playback and manually restore the playlist before another attempt.
+
 ## Development
 
 There are no dependencies to install. Run:
