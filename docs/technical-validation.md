@@ -39,6 +39,22 @@ For real Twitch transport validation, call `await communityPlaylist.e2e.waitForR
 
 The test harness is safety-first: if playback validation fails after the sequence has started, it enters handoff and preserves remaining requests rather than attempting an unverified restoration. Inspect the current status and manually re-establish the configured playlist before invoking `communityPlaylist.resume()`.
 
+## GitHub Actions live E2E
+
+`.github/workflows/live-e2e.yml` is a manually dispatched live test, separate from ordinary push/PR CI. It runs `npm run verify`, launches Chromium with Playwright, starts the loopback E2E server, seeds the isolated E2E browser session with short-lived access tokens, and runs:
+
+1. Live preflight against the broadcaster identity, EventSub connection, playlist and upcoming queue.
+2. The synthetic-redemption Spotify playback sequence, including X → Y, unauthorized skip rejection, broadcaster skip, exact playlist restoration, and no playlist mutation.
+3. An EventSub WebSocket reconnect followed by a Twitch API check for both subscriptions on the replacement session.
+
+Configure repository Actions variables `TWITCH_CLIENT_ID`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_PLAYLIST_URI`, `E2E_TRACK_X`, and `E2E_TRACK_Y`; optional variables are `TWITCH_BROADCASTER_ID`, `TWITCH_POWER_UP_ID`, and `SPOTIFY_DEVICE_ID`. Configure Actions secrets `TWITCH_ACCESS_TOKEN` and `SPOTIFY_ACCESS_TOKEN`. Tokens must be fresh and have the scopes described above. The runner seeds no refresh token and refuses to rotate credentials; refresh tokens are deliberately not accepted because Twitch rotates them on use and this workflow does not update repository secrets. Replace expired access-token secrets before dispatching another run.
+
+The optional `run_real_chat_test` workflow input adds a live chat check. While the action is running, send `!skip` from a normal viewer, then from the broadcaster or a moderator, when prompted in the workflow log. The standard run uses synthetic redemption notifications and does not spend Bits. The workflow does not perform a real Custom Power-up redemption.
+
+The Spotify Connect device must be online and playing the configured playlist, with shuffle and repeat off and at least one upcoming playlist track. Test tracks X and Y must be distinct from one another, the current track, and the next playlist track. Only one live run should control that device at a time; GitHub Actions concurrency prevents overlapping runs.
+
+This CI job is a live integration test, not a hermetic test: it affects real Spotify playback. If it fails after playback takeover, inspect the Spotify device and restore the playlist manually before retrying. The suite intentionally avoids guessing at a restore command after an uncertain failure.
+
 ## Spotify
 
 The controller uses Authorization Code with PKCE and the scopes:

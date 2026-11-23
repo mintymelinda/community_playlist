@@ -1,0 +1,55 @@
+name: Live Twitch and Spotify E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_real_chat_test:
+        description: Also wait for real viewer and broadcaster/moderator !skip messages in Twitch chat
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-playlist-live-e2e
+  cancel-in-progress: false
+
+jobs:
+  live-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TWITCH_CLIENT_ID: ${{ vars.TWITCH_CLIENT_ID }}
+      SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
+      SPOTIFY_PLAYLIST_URI: ${{ vars.SPOTIFY_PLAYLIST_URI }}
+      E2E_TRACK_X: ${{ vars.E2E_TRACK_X }}
+      E2E_TRACK_Y: ${{ vars.E2E_TRACK_Y }}
+      TWITCH_BROADCASTER_ID: ${{ vars.TWITCH_BROADCASTER_ID }}
+      TWITCH_POWER_UP_ID: ${{ vars.TWITCH_POWER_UP_ID }}
+      SPOTIFY_DEVICE_ID: ${{ vars.SPOTIFY_DEVICE_ID }}
+      RUN_REAL_CHAT_TEST: ${{ inputs.run_real_chat_test }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run syntax and automated tests
+        run: npm run verify
+
+      - name: Install Playwright
+        run: npm install --no-save --package-lock=false playwright@1.65.1
+
+      - name: Install Chromium and system dependencies
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Run live Twitch and Spotify E2E
+        env:
+          TWITCH_ACCESS_TOKEN: ${{ secrets.TWITCH_ACCESS_TOKEN }}
+          SPOTIFY_ACCESS_TOKEN: ${{ secrets.SPOTIFY_ACCESS_TOKEN }}
+        run: node scripts/e2e/ci-runner.js
