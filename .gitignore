@@ -9,6 +9,7 @@ config.local.js
 *.secret
 
 # Local tooling
+.ci-auth/
 .DS_Store
 node_modules/
 coverage/

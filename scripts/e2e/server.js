@@ -160,7 +160,7 @@ export async function startE2EServer({ env = process.env, root = ROOT, logger = 
     server.listen(port, HOST, resolveListen);
   });
   logger.info('[community-playlist:e2e] Local test server listening at http://' + HOST + ':' + port + '/');
-  logger.info('[community-playlist:e2e] OAuth tokens are acquired by the browser and are not loaded from .env.e2e.');
+  logger.info('[community-playlist:e2e] OAuth credentials are not loaded from .env.e2e.');
   return server;
 }
 

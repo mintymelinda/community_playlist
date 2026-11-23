@@ -3,6 +3,22 @@ name: Live Twitch and Spotify E2E
 on:
   workflow_dispatch:
     inputs:
+      stage:
+        description: Start Spotify approval, or run the live tests after Spotify approval
+        required: true
+        type: choice
+        options:
+          - authorize_spotify
+          - run_live_test
+        default: authorize_spotify
+      spotify_auth_run_id:
+        description: Run ID from the authorize_spotify stage (required for run_live_test)
+        required: false
+        type: string
+      spotify_callback_url:
+        description: Complete loopback URL after approving Spotify (required for run_live_test)
+        required: false
+        type: string
       run_real_chat_test:
         description: Also wait for real viewer and broadcaster/moderator !skip messages in Twitch chat
         required: false
@@ -11,15 +27,45 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: community-playlist-live-e2e
   cancel-in-progress: false
 
 jobs:
-  live-e2e:
+  authorize-spotify:
+    if: inputs.stage == 'authorize_spotify'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Create Spotify PKCE authorization request
+        env:
+          SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_REDIRECT_URI: http://127.0.0.1:4173/
+          SPOTIFY_PKCE_HANDOFF_KEY: ${{ secrets.SPOTIFY_PKCE_HANDOFF_KEY }}
+        run: node scripts/e2e/spotify-pkce-handoff.js create
+
+      - name: Store encrypted PKCE handoff for the test run
+        uses: actions/upload-artifact@v4
+        with:
+          name: spotify-pkce-${{ github.run_id }}
+          path: .ci-auth/spotify-pkce-handoff.json
+          if-no-files-found: error
+          retention-days: 1
+
+  live-e2e:
+    if: inputs.stage == 'run_live_test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     env:
       TWITCH_CLIENT_ID: ${{ vars.TWITCH_CLIENT_ID }}
       SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
@@ -42,14 +88,22 @@ jobs:
       - name: Run syntax and automated tests
         run: npm run verify
 
+      - name: Download encrypted Spotify PKCE handoff
+        uses: actions/download-artifact@v4
+        with:
+          name: spotify-pkce-${{ inputs.spotify_auth_run_id }}
+          run-id: ${{ inputs.spotify_auth_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .ci-auth
+
       - name: Install Playwright
         run: npm install --no-save --package-lock=false playwright@1.65.1
 
       - name: Install Chromium and system dependencies
-        run: npx --no-install playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Run live Twitch and Spotify E2E
         env:
-          TWITCH_ACCESS_TOKEN: ${{ secrets.TWITCH_ACCESS_TOKEN }}
-          SPOTIFY_ACCESS_TOKEN: ${{ secrets.SPOTIFY_ACCESS_TOKEN }}
+          SPOTIFY_PKCE_HANDOFF_KEY: ${{ secrets.SPOTIFY_PKCE_HANDOFF_KEY }}
+          SPOTIFY_CALLBACK_URL: ${{ inputs.spotify_callback_url }}
         run: node scripts/e2e/ci-runner.js

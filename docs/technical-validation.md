@@ -41,19 +41,19 @@ The test harness is safety-first: if playback validation fails after the sequenc
 
 ## GitHub Actions live E2E
 
-`.github/workflows/live-e2e.yml` is a manually dispatched live test, separate from ordinary push/PR CI. It runs `npm run verify`, launches Chromium with Playwright, starts the loopback E2E server, seeds the isolated E2E browser session with short-lived access tokens, and runs:
+`.github/workflows/live-e2e.yml` is manually dispatched and runs the live integration suite in headless Chromium. It has two stages because Spotify PKCE redirects to the user's browser while the runner must retain the corresponding code verifier:
 
-1. Live preflight against the broadcaster identity, EventSub connection, playlist and upcoming queue.
-2. The synthetic-redemption Spotify playback sequence, including X → Y, unauthorized skip rejection, broadcaster skip, exact playlist restoration, and no playlist mutation.
-3. An EventSub WebSocket reconnect followed by a Twitch API check for both subscriptions on the replacement session.
+1. **`authorize_spotify`** generates a PKCE verifier/state and authorization URL. The verifier is AES-256-GCM encrypted with `SPOTIFY_PKCE_HANDOFF_KEY` and uploaded as a one-day Actions artifact. The key is configured once as a repository Actions secret; the artifact is encrypted because users with repository read access can download Actions artifacts.
+2. **`run_live_test`** accepts the numeric run ID from stage 1 and the complete Spotify callback URL. CI downloads/decrypts the artifact, validates state and redirect URI, and exchanges the authorization code using the PKCE verifier. The callback URL is masked in workflow logs.
+3. CI starts Twitch Device Code authorization with the public `TWITCH_CLIENT_ID`, prints the Twitch activation URL/code, polls until the broadcaster approves, and validates the account and scopes. Twitch tokens and Spotify tokens are kept in the ephemeral runner and browser memory only.
 
-Configure repository Actions variables `TWITCH_CLIENT_ID`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_PLAYLIST_URI`, `E2E_TRACK_X`, and `E2E_TRACK_Y`; optional variables are `TWITCH_BROADCASTER_ID`, `TWITCH_POWER_UP_ID`, and `SPOTIFY_DEVICE_ID`. Configure Actions secrets `TWITCH_ACCESS_TOKEN` and `SPOTIFY_ACCESS_TOKEN`. Tokens must be fresh and have the scopes described above. The runner seeds no refresh token and refuses to rotate credentials; refresh tokens are deliberately not accepted because Twitch rotates them on use and this workflow does not update repository secrets. Replace expired access-token secrets before dispatching another run.
+Configure repository Actions variables `TWITCH_CLIENT_ID`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_PLAYLIST_URI`, `E2E_TRACK_X`, and `E2E_TRACK_Y`; optional variables are `TWITCH_BROADCASTER_ID`, `TWITCH_POWER_UP_ID`, and `SPOTIFY_DEVICE_ID`. Register Spotify redirect URI `http://127.0.0.1:4173/`. Configure the single Actions secret `SPOTIFY_PKCE_HANDOFF_KEY` with a base64-encoded 32-byte random key. No provider access tokens, refresh tokens, or client secrets are stored in GitHub.
 
-The optional `run_real_chat_test` workflow input adds a live chat check. While the action is running, send `!skip` from a normal viewer, then from the broadcaster or a moderator, when prompted in the workflow log. The standard run uses synthetic redemption notifications and does not spend Bits. The workflow does not perform a real Custom Power-up redemption.
+In the first workflow run, select stage `authorize_spotify`, open the authorization URL from the run summary, and approve access. Copy the complete redirect URL from the browser address bar (the local page may fail to load). In a second run, select `run_live_test`, provide the first run's numeric ID and the complete callback URL. The Spotify authorization code is short-lived, so dispatch the second run promptly. The CI log/summary then provides Twitch Device Code instructions; approve with the broadcaster account and the test continues automatically.
 
-The Spotify Connect device must be online and playing the configured playlist, with shuffle and repeat off and at least one upcoming playlist track. Test tracks X and Y must be distinct from one another, the current track, and the next playlist track. Only one live run should control that device at a time; GitHub Actions concurrency prevents overlapping runs.
+The default run verifies live preflight, real Spotify X → Y playback and restore, unauthorized skip rejection, broadcaster skip, no playlist mutation, and Twitch EventSub reconnection. Its redemption notifications are synthetic and spend no Bits. The optional `run_real_chat_test` waits for actual viewer and broadcaster/moderator `!skip` messages. It does not redeem a real Custom Power-up.
 
-This CI job is a live integration test, not a hermetic test: it affects real Spotify playback. If it fails after playback takeover, inspect the Spotify device and restore the playlist manually before retrying. The suite intentionally avoids guessing at a restore command after an uncertain failure.
+The Spotify Connect device must be online and playing the configured playlist, with shuffle/repeat off and an upcoming playlist track. X and Y must be distinct from one another, the current track, and the next playlist track. A failure after playback takeover may require manual playlist recovery. GitHub Actions concurrency prevents overlapping live test runs.
 
 ## Spotify
 
