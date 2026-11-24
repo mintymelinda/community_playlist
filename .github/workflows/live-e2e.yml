@@ -49,7 +49,7 @@ jobs:
 
       - name: Create Spotify PKCE authorization request
         env:
-          SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID || secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
           SPOTIFY_REDIRECT_URI: http://127.0.0.1:4173/
           SPOTIFY_PKCE_HANDOFF_KEY: ${{ secrets.SPOTIFY_PKCE_HANDOFF_KEY }}
         run: node scripts/e2e/spotify-pkce-handoff.js create
@@ -68,7 +68,7 @@ jobs:
     timeout-minutes: 40
     env:
       TWITCH_CLIENT_ID: ${{ vars.TWITCH_CLIENT_ID || secrets.TWITCH_CLIENT_ID }}
-      SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID || secrets.SPOTIFY_CLIENT_ID }}
+      SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
       SPOTIFY_PLAYLIST_URI: ${{ vars.SPOTIFY_PLAYLIST_URI || secrets.SPOTIFY_PLAYLIST_URI }}
       E2E_TRACK_X: ${{ vars.E2E_TRACK_X || secrets.E2E_TRACK_X }}
       E2E_TRACK_Y: ${{ vars.E2E_TRACK_Y || secrets.E2E_TRACK_Y }}
