@@ -49,7 +49,7 @@ jobs:
 
       - name: Create Spotify PKCE authorization request
         env:
-          SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID || secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
           SPOTIFY_REDIRECT_URI: http://127.0.0.1:4173/
           SPOTIFY_PKCE_HANDOFF_KEY: ${{ secrets.SPOTIFY_PKCE_HANDOFF_KEY }}
         run: node scripts/e2e/spotify-pkce-handoff.js create
