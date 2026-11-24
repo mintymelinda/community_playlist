@@ -25,7 +25,13 @@ export function createSpotifyPkceHandoff({
   redirectUri = DEFAULT_SPOTIFY_REDIRECT_URI,
   now = Date.now()
 }) {
-  if (!String(clientId || '').trim()) throw new Error('SPOTIFY_CLIENT_ID is required.');
+  const spotifyClientId = String(clientId || '').trim();
+  if (!spotifyClientId) {
+    throw new Error('SPOTIFY_CLIENT_ID is missing. Add the public Spotify Client ID as a repository Actions variable named SPOTIFY_CLIENT_ID, not as a secret.');
+  }
+  if (spotifyClientId.includes('*')) {
+    throw new Error('SPOTIFY_CLIENT_ID appears to be masked. Store the public Spotify Client ID as a repository Actions variable, not a secret. GitHub masks secrets in job summaries, which would corrupt the authorization link.');
+  }
   const redirect = new URL(redirectUri);
   if (
     redirect.protocol !== 'http:' ||
@@ -51,7 +57,7 @@ export function createSpotifyPkceHandoff({
   const authorizationUrl = new URL('https://accounts.spotify.com/authorize');
   authorizationUrl.search = new URLSearchParams({
     response_type: 'code',
-    client_id: String(clientId),
+    client_id: spotifyClientId,
     scope: SPOTIFY_SCOPES.join(' '),
     redirect_uri: payload.redirectUri,
     state,
