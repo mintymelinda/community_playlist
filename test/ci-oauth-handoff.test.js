@@ -79,6 +79,28 @@ test('Spotify CI PKCE handoff rejects a wrong key, callback state, and expired h
   ), /does not match/);
 });
 
+test('reports callback redirect mismatches without exposing the authorization code or state', () => {
+  const { payload } = createSpotifyPkceHandoff({
+    clientId: 'spotify-public-client'
+  });
+  const code = 'one-time-sensitive-code';
+  const state = 'one-time-sensitive-state';
+  assert.throws(
+    () => parseSpotifyCallbackUrl(
+      'http://localhost:4173/?code=' + code + '&state=' + state,
+      payload
+    ),
+    error => {
+      assert.match(error.message, /Expected http:\/\/127\.0\.0\.1:4173\//);
+      assert.match(error.message, /received http:\/\/localhost:4173\//);
+      assert.match(error.message, /hostname, port, and trailing slash/);
+      assert.doesNotMatch(error.message, new RegExp(code));
+      assert.doesNotMatch(error.message, new RegExp(state));
+      return true;
+    }
+  );
+});
+
 test('Spotify PKCE handoff refuses redirect URIs outside its fixed loopback callback', () => {
   assert.throws(() => createSpotifyPkceHandoff({
     clientId: 'spotify-public-client',
