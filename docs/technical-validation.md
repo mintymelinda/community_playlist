@@ -80,8 +80,8 @@ Viewer requests are not appended to Spotify's queue. They are stored locally and
 1. Confirms the configured playlist is actively playing on the intended device.
 2. Requires repeat mode to be off; shuffle may remain enabled.
 3. Reads the playlist items and Spotify's upcoming queue.
-4. When shuffle is off, matches the current track and upcoming queue against the sequential playlist continuation. When shuffle is on, maps Spotify's first upcoming track to its unique playlist offset and verifies that the reported queue entries belong to the playlist.
-5. Refuses to take over if the current or upcoming item cannot be mapped, duplicate-track ambiguity remains, shuffled queue data is missing, or manual queue entries fall outside the configured playlist. Unavailable/local playlist entries are retained as positional placeholders and skipped only when the upcoming queue confirms the next playable item.
+4. Maps Spotify's upcoming queue to one unambiguous playlist continuation. With shuffle off, matches the queue sequence against the playable playlist sequence; with shuffle on, maps the first upcoming item to its unique playlist offset and verifies that queued items belong to the playlist. The current track URI narrows the match when present, but is not required if the queue independently identifies a unique continuation.
+5. Refuses to take over if the upcoming queue cannot be mapped, duplicate-track ambiguity remains, shuffled queue data is missing, or manual queue entries fall outside the configured playlist. A current URI that does not appear in the playlist is acceptable only when the upcoming queue independently establishes a unique continuation. Unavailable/local playlist entries are retained as positional placeholders and skipped only when the upcoming queue confirms the next playable item.
 
 It then starts each request as a single URI, verifies the resulting current track, and watches playback state. When the request queue empties, it restores the saved playlist context at the saved offset, rather than calling Spotify's next endpoint.
 

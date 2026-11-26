@@ -73,7 +73,7 @@ It refuses to interrupt unless:
 
 - The configured playlist is actively playing on the selected device.
 - Repeat is off. Shuffle may be on when Spotify's upcoming queue identifies one unambiguous next playlist item; ambiguous duplicate positions and non-playlist queue entries are rejected.
-- The current track maps to one unambiguous position in the playlist.
+- When the current URI appears in the playlist, it constrains position matching. If Spotify reports a relinked/alternate current URI, the upcoming queue must independently identify one unambiguous playlist continuation.
 - The upcoming queue matches the playlist continuation.
 - The Spotify upcoming queue can be matched unambiguously to the playlist's playable entries. Unavailable/local entries retain their playlist positions as placeholders; unsupported queue entries, duplicate-position ambiguity, or a queue that does not match are rejected.
 

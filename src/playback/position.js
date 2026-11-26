@@ -4,12 +4,9 @@ export function resolveNextPlaylistOffset({ playlistTracks, currentTrackUri, upc
   }
 
   const currentIndices = [];
-  playlistTracks.forEach((track, index) => {
-    if (track?.uri === currentTrackUri) currentIndices.push(index);
+  playlistTracks.forEach((item, index) => {
+    if (item?.uri === currentTrackUri) currentIndices.push(index);
   });
-  if (!currentIndices.length) {
-    throw new Error('The currently playing item is not in the configured playlist.');
-  }
 
   const queueItems = Array.isArray(upcomingTracks) ? upcomingTracks : [];
   if (queueItems.some(item => !item?.uri)) {
@@ -18,8 +15,19 @@ export function resolveNextPlaylistOffset({ playlistTracks, currentTrackUri, upc
   const queueUris = queueItems.map(item => item.uri);
   const playlistUris = new Set(playlistTracks.map(item => item?.uri).filter(Boolean));
 
+  // When shuffle is enabled, Spotify's queue order is authoritative. The first
+  // queued item identifies the playlist offset to restore, but only if that
+  // item occurs once and the queue contains no manually queued foreign items.
   if (shuffle) {
     if (!queueUris.length) {
+      if (currentIndices.length === 1) {
+        const hasPlayableRemainder = playlistTracks
+          .slice(currentIndices[0] + 1)
+          .some(item => item?.uri);
+        if (!hasPlayableRemainder) {
+          return { nextOffset: playlistTracks.length, nextTrackUri: null };
+        }
+      }
       throw new Error('Spotify upcoming queue does not identify the next shuffled playlist item. Refusing to interrupt playback.');
     }
     if (queueUris.some(uri => !playlistUris.has(uri))) {
@@ -32,7 +40,7 @@ export function resolveNextPlaylistOffset({ playlistTracks, currentTrackUri, upc
       if (item?.uri === nextTrackUri) nextIndices.push(index);
     });
     if (nextIndices.length !== 1) {
-      throw new Error('The next shuffled item occurs more than once in the playlist and its restore position is ambiguous.');
+      throw new Error('The next shuffled item occurs more than once in the playlist or cannot be placed after the current item. Its restore position is ambiguous.');
     }
 
     return {
@@ -41,30 +49,42 @@ export function resolveNextPlaylistOffset({ playlistTracks, currentTrackUri, upc
     };
   }
 
-  const valid = currentIndices.map(index => {
-    const remaining = playlistTracks
-      .map((item, playlistIndex) => ({ item, playlistIndex }))
-      .slice(index + 1)
-      .filter(entry => entry.item?.uri);
+  // With shuffle off, find the playlist offset whose playable suffix matches
+  // Spotify's full upcoming queue. This does not require the current playback
+  // URI itself to match the playlist: Spotify can report a relinked/alternate
+  // current item while the playlist context and continuation remain valid.
+  if (queueUris.length) {
+    const candidates = [];
+    playlistTracks.forEach((item, index) => {
+      if (item?.uri !== queueUris[0]) return;
+      if (currentIndices.length && !currentIndices.some(currentIndex => currentIndex < index)) return;
 
-    if (!remaining.length) {
-      return queueUris.length === 0 ? { remaining } : null;
-    }
-    if (!queueUris.length || queueUris.length > remaining.length) return null;
-    const matches = queueUris.every((uri, offset) => remaining[offset]?.item.uri === uri);
-    return matches ? { remaining } : null;
-  }).filter(Boolean);
+      const remaining = playlistTracks
+        .map((playlistItem, playlistIndex) => ({ item: playlistItem, playlistIndex }))
+        .slice(index)
+        .filter(entry => entry.item?.uri);
+      if (queueUris.length > remaining.length) return;
+      const matches = queueUris.every((uri, offset) => remaining[offset]?.item.uri === uri);
+      if (matches) candidates.push({ nextOffset: index, nextTrackUri: item.uri });
+    });
 
-  if (valid.length !== 1) {
-    if (!valid.length) {
-      throw new Error('Spotify upcoming queue does not match the configured playlist continuation. Refusing to interrupt playback.');
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) {
+      throw new Error('Spotify upcoming queue matches more than one playlist position. Refusing to interrupt playback.');
     }
-    throw new Error('The current item occurs more than once in the playlist and its next position is ambiguous.');
+    throw new Error('Spotify upcoming queue does not match an unambiguous continuation of the configured playlist. Refusing to interrupt playback.');
   }
 
-  const next = valid[0].remaining[0];
-  return {
-    nextOffset: next?.playlistIndex ?? playlistTracks.length,
-    nextTrackUri: next?.item.uri || null
-  };
+  // An empty queue is only safe to interpret as end-of-playlist when the
+  // current item has one known playlist position and nothing playable follows.
+  if (currentIndices.length === 1) {
+    const hasPlayableRemainder = playlistTracks
+      .slice(currentIndices[0] + 1)
+      .some(item => item?.uri);
+    if (!hasPlayableRemainder) {
+      return { nextOffset: playlistTracks.length, nextTrackUri: null };
+    }
+  }
+
+  throw new Error('Spotify upcoming queue does not identify the next playlist item, and the current item cannot establish an unambiguous end position.');
 }
