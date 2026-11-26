@@ -136,8 +136,13 @@ export function parseSpotifyCallbackUrl(callbackValue, handoff) {
     throw new Error('Paste the complete Spotify redirect URL from the browser address bar.');
   }
 
-  if (callback.origin + callback.pathname !== handoff.redirectUri) {
-    throw new Error('Spotify callback URL does not match the registered loopback redirect URI.');
+  const receivedRedirectUri = callback.origin + callback.pathname;
+  if (receivedRedirectUri !== handoff.redirectUri) {
+    throw new Error(
+      'Spotify callback URL does not match the registered loopback redirect URI. Expected ' +
+      handoff.redirectUri + ' but received ' + receivedRedirectUri +
+      '. Keep the hostname, port, and trailing slash exactly as shown in the Spotify authorization link. The authorization code and state are intentionally omitted.'
+    );
   }
 
   const providerError = callback.searchParams.get('error');
