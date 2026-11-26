@@ -1,5 +1,13 @@
 import { isAuthorizedSkip, isSkipCommand } from '../twitch/eventsub.js';
 
+export function playbackTrackUri(playback) {
+  return playback?.item?.linked_from?.uri || playback?.item?.uri || null;
+}
+
+function spotifyTrackUri(track) {
+  return track?.linked_from?.uri || track?.uri || null;
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -166,7 +174,7 @@ export function createLiveE2ESuite(app) {
       assert(trackX.uri !== snapshot.nextTrackUri && trackY.uri !== snapshot.nextTrackUri, 'Choose test tracks other than the playlist track that must be restored.');
 
       const queue = await app.spotify.getQueue();
-      assert(queue[0]?.uri === snapshot.nextTrackUri, 'Spotify upcoming queue did not match the playlist continuation at E2E preflight.');
+      assert(spotifyTrackUri(queue[0]) === snapshot.nextTrackUri, 'Spotify upcoming queue did not match the playlist continuation at E2E preflight.');
       return { snapshot, trackX, trackY, queue, playlistUri: app.playlistUri };
     } catch (error) {
       try {
@@ -203,7 +211,7 @@ export function createLiveE2ESuite(app) {
   async function waitForTrack(uri, label) {
     return waitFor(label + ' to become the Spotify current track', async () => {
       const playback = await app.spotify.getPlaybackState();
-      return playback?.item?.uri === uri ? playback : null;
+      return playbackTrackUri(playback) === uri ? playback : null;
     });
   }
 
@@ -235,7 +243,7 @@ export function createLiveE2ESuite(app) {
 
       await injectAuthorizedSkip(runId + '-unauthorized-skip', 'e2e-unprivileged-viewer');
       const afterUnauthorized = await app.spotify.getPlaybackState();
-      assert(afterUnauthorized?.item?.uri === trackX.uri, 'An unauthorized !skip changed Spotify playback.');
+      assert(playbackTrackUri(afterUnauthorized) === trackX.uri, 'An unauthorized !skip changed Spotify playback.');
       assert(app.store.get().active?.id === firstId, 'An unauthorized !skip changed the active request.');
       checks.push({ name: 'Unauthorized !skip is rejected', passed: true });
 
@@ -251,7 +259,7 @@ export function createLiveE2ESuite(app) {
           Promise.resolve(app.store.get())
         ]);
         return playback?.context?.uri === playlistUri &&
-          playback?.item?.uri === snapshot.nextTrackUri &&
+          playbackTrackUri(playback) === snapshot.nextTrackUri &&
           current.mode === 'idle' &&
           !current.active &&
           current.pending.length === 0 &&
@@ -267,8 +275,8 @@ export function createLiveE2ESuite(app) {
       assert(JSON.stringify(playlistAfterUris) === JSON.stringify(playlistBefore), 'The Spotify playlist items changed during the test.');
       checks.push({ name: 'Spotify playlist was not mutated', passed: true });
 
-      const expectedQueue = queue.slice(1).map(item => item?.uri || null);
-      const actualQueue = queueAfter.map(item => item?.uri || null);
+      const expectedQueue = queue.slice(1).map(item => spotifyTrackUri(item));
+      const actualQueue = queueAfter.map(item => spotifyTrackUri(item));
       assert(JSON.stringify(actualQueue) === JSON.stringify(expectedQueue), 'Spotify upcoming queue did not advance by exactly the restored playlist track.');
       checks.push({ name: 'Upcoming playlist queue continues after the restored track', passed: true });
 
@@ -468,7 +476,7 @@ export function createLiveE2ESuite(app) {
         app.spotify.getPlaybackState(),
         Promise.resolve(app.store.get())
       ]);
-      assert(afterUnauthorizedPlayback?.item?.uri === trackX.uri, 'An unauthorized real Twitch !skip changed Spotify playback.');
+      assert(playbackTrackUri(afterUnauthorizedPlayback) === trackX.uri, 'An unauthorized real Twitch !skip changed Spotify playback.');
       assert(afterUnauthorizedState.active?.id === firstId, 'An unauthorized real Twitch !skip changed the active request.');
       assert(afterUnauthorizedState.pending[0]?.id === secondId, 'An unauthorized real Twitch !skip changed the pending request.');
       checks.push({ name: 'A real non-moderator !skip is ignored', passed: true, chatterId: unauthorized.chatterId });
