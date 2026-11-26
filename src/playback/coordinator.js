@@ -71,20 +71,26 @@ export class PlaybackCoordinator {
       uri: request.uri,
       state: this.queueDiagnosticState()
     });
-    if (this.store.containsRequest(request.id)) {
-      this.logger.info('[community-playlist] Duplicate queue request ignored.', {
-        controllerInstance: this.instanceId, operationId, requestId: request.id
+
+    // Queue mutation belongs inside the same executor as playback transitions.
+    // Otherwise a redemption can change persisted queue state while an earlier
+    // play command is still awaiting Spotify confirmation.
+    return this.serial.run(async () => {
+      if (this.store.containsRequest(request.id)) {
+        this.logger.info('[community-playlist] Duplicate queue request ignored.', {
+          controllerInstance: this.instanceId, operationId, requestId: request.id
+        });
+        return false;
+      }
+      const accepted = this.store.enqueue(request);
+      if (!accepted) throw new Error('The request queue is full. The redemption was not queued.');
+      await this.pump();
+      this.logger.info('[community-playlist] Queue enqueue completed.', {
+        controllerInstance: this.instanceId, operationId, requestId: request.id,
+        state: this.queueDiagnosticState()
       });
-      return false;
-    }
-    const accepted = this.store.enqueue(request);
-    if (!accepted) throw new Error('The request queue is full. The redemption was not queued.');
-    await this.serial.run(() => this.pump());
-    this.logger.info('[community-playlist] Queue enqueue completed.', {
-      controllerInstance: this.instanceId, operationId, requestId: request.id,
-      state: this.queueDiagnosticState()
+      return true;
     });
-    return true;
   }
 
   queueDiagnosticState() {
