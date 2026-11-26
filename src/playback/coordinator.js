@@ -32,6 +32,8 @@ export class PlaybackCoordinator {
     this.logger = logger;
     this.timers = timers;
     this.serial = new SerialExecutor();
+    this.instanceId = globalThis.crypto?.randomUUID?.() || ('controller-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+    this.operationSequence = 0;
     this.pollTimer = null;
     this.started = false;
   }
@@ -61,11 +63,37 @@ export class PlaybackCoordinator {
   }
 
   async enqueue(request) {
-    if (this.store.containsRequest(request.id)) return false;
+    const operationId = ++this.operationSequence;
+    this.logger.info('[community-playlist] Queue enqueue requested.', {
+      controllerInstance: this.instanceId,
+      operationId,
+      requestId: request.id,
+      uri: request.uri,
+      state: this.queueDiagnosticState()
+    });
+    if (this.store.containsRequest(request.id)) {
+      this.logger.info('[community-playlist] Duplicate queue request ignored.', {
+        controllerInstance: this.instanceId, operationId, requestId: request.id
+      });
+      return false;
+    }
     const accepted = this.store.enqueue(request);
     if (!accepted) throw new Error('The request queue is full. The redemption was not queued.');
     await this.serial.run(() => this.pump());
+    this.logger.info('[community-playlist] Queue enqueue completed.', {
+      controllerInstance: this.instanceId, operationId, requestId: request.id,
+      state: this.queueDiagnosticState()
+    });
     return true;
+  }
+
+  queueDiagnosticState() {
+    const state = this.store.get();
+    return {
+      activeRequestId: state.active?.id || null,
+      pendingRequestIds: state.pending.map(item => item.id),
+      mode: state.mode
+    };
   }
 
   async skip() {
@@ -174,9 +202,21 @@ export class PlaybackCoordinator {
       next.lastError = null;
     });
 
+    const playAttemptId = this.instanceId + ':' + (++this.operationSequence);
+    this.logger.info('[community-playlist] Issuing Spotify play command.', {
+      controllerInstance: this.instanceId,
+      playAttemptId,
+      requestId: request.id,
+      uri: request.uri,
+      deviceId: snapshot.deviceId,
+      state: this.queueDiagnosticState()
+    });
     try {
       await this.spotify.playTrack(request.uri, snapshot.deviceId);
-      const confirmed = await this.waitForTrack(request.uri, snapshot.deviceId);
+      this.logger.info('[community-playlist] Spotify accepted play command; beginning playback confirmation.', {
+        controllerInstance: this.instanceId, playAttemptId, requestId: request.id
+      });
+      const confirmed = await this.waitForTrack(request.uri, snapshot.deviceId, { requestId: request.id, playAttemptId });
       if (!confirmed) throw new Error('Spotify accepted the play command but the requested track was not confirmed.');
       this.store.update(next => {
         if (next.active?.id === request.id) {
@@ -185,6 +225,11 @@ export class PlaybackCoordinator {
           next.mode = 'playing-request';
         }
       });
+      this.logger.info('[community-playlist] Playback confirmed.', {
+        controllerInstance: this.instanceId, playAttemptId, requestId: request.id,
+        uri: request.uri, observedUri: trackUri(confirmed), deviceId: confirmed.device?.id,
+        item: confirmed.item?.name || null
+      });
       this.logger.info('[community-playlist] Playing request: ' + request.title + ' (' + request.requester + ').');
     } catch (error) {
       this.handoff('Could not confirm whether Spotify started the request. The request was preserved for manual recovery. ' + error.message);
@@ -192,7 +237,11 @@ export class PlaybackCoordinator {
     }
   }
 
-  async waitForTrack(uri, deviceId) {
+  async waitForTrack(uri, deviceId, context = {}) {
+    const { requestId = null, playAttemptId = null } = context;
+    this.logger.info('[community-playlist] Playback confirmation started.', {
+      controllerInstance: this.instanceId, playAttemptId, requestId, expectedUri: uri, deviceId
+    });
     const deadline = Date.now() + this.playbackConfirmationTimeoutMs;
     let lastState = null;
     let lastError = null;
@@ -200,7 +249,14 @@ export class PlaybackCoordinator {
     while (Date.now() < deadline) {
       try {
         const state = await this.spotify.getPlaybackState();
-        if (state?.device?.id === deviceId && trackUri(state) === uri && state.is_playing === true) return state;
+        if (state?.device?.id === deviceId && trackUri(state) === uri && state.is_playing === true) {
+          this.logger.info('[community-playlist] Playback confirmation matched.', {
+            controllerInstance: this.instanceId, playAttemptId, requestId,
+            expectedUri: uri, observedUri: trackUri(state), deviceId,
+            progressMs: state.progress_ms ?? null
+          });
+          return state;
+        }
         lastState = state || null;
       } catch (error) {
         // Spotify can briefly return an unavailable/stale player state after
@@ -229,7 +285,10 @@ export class PlaybackCoordinator {
       '; item=' + String(lastState?.item?.name || 'unknown') +
       '; restriction=' + String(lastState?.item?.restrictions?.reason || 'none') + '.' +
       (lastError ? ' Last playback-state API error: ' + lastError.message : '');
-    this.logger.warn('[community-playlist] Spotify playback confirmation timed out. ' + diagnostic);
+    this.logger.warn('[community-playlist] Spotify playback confirmation timed out. ' + diagnostic, {
+      controllerInstance: this.instanceId, playAttemptId, requestId,
+      expectedUri: uri, deviceId, queueState: this.queueDiagnosticState()
+    });
     return null;
   }
 
