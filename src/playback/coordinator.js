@@ -8,17 +8,7 @@ function trackUri(state) {
   return state?.item?.linked_from?.uri || state?.item?.uri || null;
 }
 
-function trackMatchesRequest(state, request) {
-  if (!state?.item || !request) return false;
-  if (trackUri(state) === request.uri) return true;
 
-  // Some Spotify playback responses omit linked_from even when the player
-  // reports a relinked playable URI. ISRC is the recording-level identity;
-  // never infer equivalence from title/artist text alone.
-  const expectedIsrc = String(request.isrc || '').trim().toUpperCase();
-  const observedIsrc = String(state.item.external_ids?.isrc || '').trim().toUpperCase();
-  return Boolean(expectedIsrc && observedIsrc && expectedIsrc === observedIsrc);
-}
 
 export class PlaybackCoordinator {
   constructor({
@@ -46,6 +36,7 @@ export class PlaybackCoordinator {
     this.serial = new SerialExecutor();
     this.instanceId = globalThis.crypto?.randomUUID?.() || ('controller-' + Date.now() + '-' + Math.random().toString(16).slice(2));
     this.operationSequence = 0;
+    this.trackMetadataCache = new Map();
     this.pollTimer = null;
     this.started = false;
   }
@@ -114,12 +105,40 @@ export class PlaybackCoordinator {
     };
   }
 
+  async trackMatchesRequest(state, request) {
+    if (!state?.item || !request) return false;
+    if (trackUri(state) === request.uri) return true;
+
+    const expectedIsrc = String(request.isrc || '').trim().toUpperCase();
+    if (!expectedIsrc) return false;
+
+    // The Spotify player-state endpoint omits external_ids. Resolve the
+    // playable URI through GET /tracks/{id}, and cache the result so polling
+    // does not repeatedly hit the metadata endpoint.
+    const playableUri = state.item.uri;
+    if (!playableUri) return false;
+    if (!this.trackMetadataCache.has(playableUri)) {
+      const lookup = Promise.resolve()
+        .then(() => this.spotify.getTrack(playableUri))
+        .catch(error => {
+          this.logger.warn('[community-playlist] Could not resolve Spotify playable-track metadata.', {
+            playableUri, error: error.message
+          });
+          return null;
+        });
+      this.trackMetadataCache.set(playableUri, lookup);
+    }
+    const playableTrack = await this.trackMetadataCache.get(playableUri);
+    const observedIsrc = String(playableTrack?.isrc || '').trim().toUpperCase();
+    return Boolean(observedIsrc && observedIsrc === expectedIsrc);
+  }
+
   async skip() {
     return this.serial.run(async () => {
       const state = this.store.get();
       if (!state.active) return false;
       const current = await this.spotify.getPlaybackState();
-      if (!current || current.device?.id !== state.snapshot?.deviceId || !trackMatchesRequest(current, state.active)) {
+      if (!current || current.device?.id !== state.snapshot?.deviceId || !(await this.trackMatchesRequest(current, state.active))) {
         this.handoff('Playback changed before the skip command could be applied.');
         return false;
       }
@@ -268,7 +287,8 @@ export class PlaybackCoordinator {
       try {
         const state = await this.spotify.getPlaybackState();
         const observedIsrc = state?.item?.external_ids?.isrc || null;
-        const matchedByIsrc = Boolean(expectedIsrc && observedIsrc && String(expectedIsrc).toUpperCase() === String(observedIsrc).toUpperCase());
+        const matchedByIsrc = Boolean(expectedIsrc && state?.item?.uri !== uri &&
+          await this.trackMatchesRequest(state, { uri, isrc: expectedIsrc }));
         if (state?.device?.id === deviceId && (trackUri(state) === uri || matchedByIsrc) && state.is_playing === true) {
           this.logger.info('[community-playlist] Playback confirmation matched.', {
             controllerInstance: this.instanceId, playAttemptId, requestId,
@@ -299,7 +319,7 @@ export class PlaybackCoordinator {
     const diagnostic = 'Expected track ' + uri + ' (ISRC ' + String(expectedIsrc || 'unknown') + ') on device ' + deviceId +
       '; last observed track ' + observedUri + ' (playable URI ' + playableUri +
       ') on device ' + observedDevice +
-      '; observed_isrc=' + String(lastState?.item?.external_ids?.isrc || 'unknown') +
+      '; observed_isrc=' + String(lastState?.item?.external_ids?.isrc || this.trackMetadataCache.get(lastState?.item?.uri)?.isrc || 'not-in-player-state') +
       '; is_playing=' + String(lastState?.is_playing ?? 'unknown') +
       '; progress_ms=' + String(lastState?.progress_ms ?? 'unknown') +
       '; context=' + String(lastState?.context?.uri || 'none') +
@@ -358,7 +378,7 @@ export class PlaybackCoordinator {
       return;
     }
 
-    if (trackMatchesRequest(playback, active)) {
+    if (await this.trackMatchesRequest(playback, active)) {
       const progress = Number(playback.progress_ms) || 0;
       const duration = Number(playback.item?.duration_ms) || active.durationMs || 0;
       this.store.update(next => {
@@ -467,7 +487,7 @@ export class PlaybackCoordinator {
     }
 
     const playback = await this.spotify.getPlaybackState();
-    if (playback?.device?.id === state.snapshot.deviceId && trackMatchesRequest(playback, state.active)) {
+    if (playback?.device?.id === state.snapshot.deviceId && await this.trackMatchesRequest(playback, state.active)) {
       this.store.update(next => {
         next.active.lastProgressMs = Number(playback.progress_ms) || 0;
         next.active.durationMs = Number(playback.item?.duration_ms) || next.active.durationMs || 0;
