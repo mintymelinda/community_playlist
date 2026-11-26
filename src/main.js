@@ -75,14 +75,70 @@ class CommunityPlaylistApp {
     });
     this.eventSub = null;
     this.started = false;
+    this.controllerLockRelease = null;
+    this.controllerLockTask = null;
     this.broadcasterId = null;
     this.powerUp = null;
+  }
+
+  async acquireControllerLock() {
+    const lockManager = globalThis.navigator?.locks;
+    if (!lockManager?.request) {
+      throw new Error('This browser does not support Web Locks, which are required to prevent multiple controller tabs from issuing competing Spotify playback commands.');
+    }
+
+    let resolveAcquired;
+    let rejectAcquired;
+    const acquired = new Promise((resolve, reject) => {
+      resolveAcquired = resolve;
+      rejectAcquired = reject;
+    });
+    const held = new Promise(resolve => { this.controllerLockRelease = resolve; });
+    const lockName = 'community-playlist-controller:' + this.autoStartKey;
+
+    this.controllerLockTask = lockManager.request(lockName, { mode: 'exclusive', ifAvailable: true }, async lock => {
+      if (!lock) {
+        rejectAcquired(new Error('Another Community Playlist controller tab is already running. Stop it before starting this tab.'));
+        return;
+      }
+      resolveAcquired();
+      await held;
+    }).catch(error => {
+      rejectAcquired(error);
+    });
+
+    try {
+      await acquired;
+    } catch (error) {
+      this.controllerLockRelease?.();
+      this.controllerLockRelease = null;
+      await this.controllerLockTask;
+      this.controllerLockTask = null;
+      throw error;
+    }
+  }
+
+  async releaseControllerLock() {
+    this.controllerLockRelease?.();
+    this.controllerLockRelease = null;
+    await this.controllerLockTask?.catch(() => {});
+    this.controllerLockTask = null;
   }
 
   async start() {
     if (this.started) return this.status();
     validateConfig(this.config);
+    await this.acquireControllerLock();
 
+    try {
+      return await this.startWithControllerLock();
+    } catch (error) {
+      await this.releaseControllerLock();
+      throw error;
+    }
+  }
+
+  async startWithControllerLock() {
     await this.spotifyAuth.handleRedirect();
     if (!this.spotifyAuth.session?.accessToken) {
       sessionStorage.setItem(this.autoStartKey, '1');
@@ -150,6 +206,7 @@ class CommunityPlaylistApp {
     this.redemptionProcessor.dispose();
     this.coordinator.stop();
     this.started = false;
+    await this.releaseControllerLock();
     console.info('[community-playlist] Controller stopped. Spotify playback was not paused.');
   }
 
