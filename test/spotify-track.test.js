@@ -33,7 +33,12 @@ test('rejects non-track Spotify links', () => {
 });
 
 test('normalizes requested tracks and keeps supported playlist episodes', () => {
-  assert.equal(normalizeSpotifyTrack({ id: '1', uri: 'spotify:track:1', name: 'Song', artists: [{ name: 'Artist' }] }).name, 'Song');
+  const normalized = normalizeSpotifyTrack({
+    id: '1', uri: 'spotify:track:1', name: 'Song',
+    artists: [{ name: 'Artist' }], external_ids: { isrc: 'USRC17607839' }
+  });
+  assert.equal(normalized.name, 'Song');
+  assert.equal(normalized.isrc, 'USRC17607839');
   assert.equal(normalizeSpotifyTrack({ id: '1', uri: 'spotify:track:1', is_playable: false }), null);
   assert.equal(normalizePlaylistItem({ item: { id: '2', uri: 'spotify:track:2', name: 'Nested' } }).name, 'Nested');
   assert.deepEqual(normalizePlaylistItem({
