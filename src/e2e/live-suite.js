@@ -50,6 +50,7 @@ function chatNotification(broadcasterId, chatterId, messageId, badges = []) {
 
 export function createLiveE2ESuite(app) {
   let playbackPreparation = null;
+  const playableTrackMetadata = new Map();
 
   async function restorePlaybackSettings() {
     const saved = playbackPreparation;
@@ -208,10 +209,41 @@ export function createLiveE2ESuite(app) {
     return app.eventSub.handleNotification(chatNotification(app.broadcasterId, chatterId, id, badges));
   }
 
-  async function waitForTrack(uri, label) {
+  async function playbackMatchesTrack(playback, expectedTrack) {
+    if (!playback?.item || !expectedTrack) return false;
+    const expectedUri = typeof expectedTrack === 'string' ? expectedTrack : expectedTrack.uri;
+    if (!expectedUri) return false;
+    if (playbackTrackUri(playback) === expectedUri) return true;
+
+    // Spotify Connect may report a market-specific playable URI without
+    // linked_from. Match the recording by ISRC, just like the coordinator,
+    // rather than making the live E2E helper reject a valid relinked track.
+    const expectedIsrc = String(typeof expectedTrack === 'string' ? '' : expectedTrack.isrc || '')
+      .trim().toUpperCase();
+    const playableUri = playback.item.uri;
+    if (!expectedIsrc || !playableUri) return false;
+
+    if (!playableTrackMetadata.has(playableUri)) {
+      const lookup = Promise.resolve()
+        .then(() => app.spotify.getTrack(playableUri))
+        .catch(error => {
+          console.warn('[community-playlist:e2e] Could not resolve observed Spotify track metadata.', {
+            playableUri, error: error.message
+          });
+          return null;
+        });
+      playableTrackMetadata.set(playableUri, lookup);
+    }
+
+    const observedTrack = await playableTrackMetadata.get(playableUri);
+    const observedIsrc = String(observedTrack?.isrc || '').trim().toUpperCase();
+    return Boolean(observedIsrc && observedIsrc === expectedIsrc);
+  }
+
+  async function waitForTrack(track, label) {
     return waitFor(label + ' to become the Spotify current track', async () => {
       const playback = await app.spotify.getPlaybackState();
-      return playbackTrackUri(playback) === uri ? playback : null;
+      return await playbackMatchesTrack(playback, track) ? playback : null;
     });
   }
 
@@ -229,7 +261,7 @@ export function createLiveE2ESuite(app) {
       const secondId = runId + '-redemption-y';
 
       await injectRedemption(firstId, app.config.e2eTrackX);
-      await waitForTrack(trackX.uri, 'request X');
+      await waitForTrack(trackX, 'request X');
       let state = app.store.get();
       assert(state.active?.id === firstId, 'Request X was not recorded as the active request.');
       assert(state.snapshot?.nextTrackUri === snapshot.nextTrackUri, 'The coordinator did not preserve the preflight playlist continuation.');
@@ -243,12 +275,12 @@ export function createLiveE2ESuite(app) {
 
       await injectAuthorizedSkip(runId + '-unauthorized-skip', 'e2e-unprivileged-viewer');
       const afterUnauthorized = await app.spotify.getPlaybackState();
-      assert(playbackTrackUri(afterUnauthorized) === trackX.uri, 'An unauthorized !skip changed Spotify playback.');
+      assert(await playbackMatchesTrack(afterUnauthorized, trackX), 'An unauthorized !skip changed Spotify playback.');
       assert(app.store.get().active?.id === firstId, 'An unauthorized !skip changed the active request.');
       checks.push({ name: 'Unauthorized !skip is rejected', passed: true });
 
       await injectAuthorizedSkip(runId + '-skip-x', app.broadcasterId);
-      await waitForTrack(trackY.uri, 'request Y after broadcaster !skip');
+      await waitForTrack(trackY, 'request Y after broadcaster !skip');
       assert(app.store.get().active?.id === secondId, 'Broadcaster !skip did not advance to request Y.');
       checks.push({ name: 'Broadcaster !skip advances to request Y', passed: true });
 
@@ -465,7 +497,7 @@ export function createLiveE2ESuite(app) {
       const secondId = runId + '-redemption-y';
 
       await injectRedemption(firstId, app.config.e2eTrackX);
-      await waitForTrack(trackX.uri, 'request X for the real chat skip test');
+      await waitForTrack(trackX, 'request X for the real chat skip test');
       await injectRedemption(secondId, app.config.e2eTrackY);
       assert(app.store.get().active?.id === firstId, 'Request X was not active before the live chat test.');
       assert(app.store.get().pending[0]?.id === secondId, 'Request Y was not pending before the live chat test.');
@@ -476,13 +508,13 @@ export function createLiveE2ESuite(app) {
         app.spotify.getPlaybackState(),
         Promise.resolve(app.store.get())
       ]);
-      assert(playbackTrackUri(afterUnauthorizedPlayback) === trackX.uri, 'An unauthorized real Twitch !skip changed Spotify playback.');
+      assert(await playbackMatchesTrack(afterUnauthorizedPlayback, trackX), 'An unauthorized real Twitch !skip changed Spotify playback.');
       assert(afterUnauthorizedState.active?.id === firstId, 'An unauthorized real Twitch !skip changed the active request.');
       assert(afterUnauthorizedState.pending[0]?.id === secondId, 'An unauthorized real Twitch !skip changed the pending request.');
       checks.push({ name: 'A real non-moderator !skip is ignored', passed: true, chatterId: unauthorized.chatterId });
 
       const authorized = await waitForRealSkipMessage(true, timeoutMs);
-      await waitForTrack(trackY.uri, 'request Y after a real broadcaster/moderator !skip');
+      await waitForTrack(trackY, 'request Y after a real broadcaster/moderator !skip');
       assert(app.store.get().active?.id === secondId, 'The real broadcaster/moderator !skip did not advance to request Y.');
       checks.push({ name: 'A real broadcaster/moderator !skip advances to Y', passed: true, chatterId: authorized.chatterId });
 
