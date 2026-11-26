@@ -60,8 +60,8 @@ test('SpotifyClient resolves a playable track URI to its recording ISRC', async 
     fetchImpl: async url => {
       requestedUrl = url;
       return Response.json({
-        id: 'playable-track-id',
-        uri: 'spotify:track:playable-track-id',
+        id: '4EISOJDYezvr8UtIeOy3sj',
+        uri: 'spotify:track:4EISOJDYezvr8UtIeOy3sj',
         type: 'track',
         name: 'SEX MACHINA',
         artists: [{ name: 'Artist' }],
@@ -71,9 +71,9 @@ test('SpotifyClient resolves a playable track URI to its recording ISRC', async 
     }
   });
 
-  const track = await client.getTrack('spotify:track:playable-track-id');
+  const track = await client.getTrack('spotify:track:4EISOJDYezvr8UtIeOy3sj');
 
-  assert.equal(requestedUrl, 'https://api.spotify.com/v1/tracks/playable-track-id');
-  assert.equal(track.uri, 'spotify:track:playable-track-id');
+  assert.equal(requestedUrl, 'https://api.spotify.com/v1/tracks/4EISOJDYezvr8UtIeOy3sj');
+  assert.equal(track.uri, 'spotify:track:4EISOJDYezvr8UtIeOy3sj');
   assert.equal(track.isrc, 'QZVFR2301719');
 });
