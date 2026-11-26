@@ -12,7 +12,7 @@ Spotify itself handles all audio playback. This project does not capture, proces
 - Spotify Authorization Code with PKCE, token refresh, device selection, playlist inspection, Spotify track URL/URI parsing, and text search.
 - Persistent application-owned FIFO request queue, retryable redemption intake, request-ID idempotency, serialized playback changes, and conservative browser-reload recovery.
 - Broadcaster/moderator-only \`!skip\`, advancing directly to the next viewer request without calling Spotify's playlist skip endpoint.
-- Playback safeguards for manual queue entries, repeat mode, shuffle-aware playlist restoration, changed devices, manual playback changes, duplicate playlist tracks, unavailable playlist items, and unexpected playlist edits.
+- Playback safeguards for manual queue entries, repeat mode, shuffle-aware playlist restoration, changed devices, manual playback changes, duplicate playlist tracks, and unexpected playlist edits. Playable podcast episodes can remain in the playlist continuation; unavailable/local entries are skipped only when Spotify's upcoming queue confirms the next playable item.
 - Automated tests for OAuth-related helpers, Twitch redemption/chat authorization, retry and duplicate-delivery handling, EventSub reconnect/migration/keepalive lifecycle, request ordering, skip behaviour, storage recovery, Spotify parsing, and playlist restore-position resolution.
 
 ## Requirements
@@ -75,7 +75,7 @@ It refuses to interrupt unless:
 - Repeat is off. Shuffle may be on when Spotify's upcoming queue identifies one unambiguous next playlist item; ambiguous duplicate positions and non-playlist queue entries are rejected.
 - The current track maps to one unambiguous position in the playlist.
 - The upcoming queue matches the playlist continuation.
-- The playlist has no unavailable or unsupported entries that would make positional restoration unsafe.
+- The Spotify upcoming queue can be matched unambiguously to the playlist's playable entries. Unavailable/local entries retain their playlist positions as placeholders; unsupported queue entries, duplicate-position ambiguity, or a queue that does not match are rejected.
 
 After the viewer FIFO is exhausted, it restores the playlist at the saved next offset. If Spotify has already returned to that exact next item, it leaves playback alone. A moderator skip starts the next viewer request directly; it does not call Spotify's skip-next endpoint, which could skip a playlist track.
 
