@@ -124,6 +124,7 @@ jobs:
         run: node scripts/e2e/prepare-oauth.js
 
       - name: Persist encrypted OAuth vault before live playback tests
+        if: always() && hashFiles('.ci-auth/community-playlist-oauth-vault.json') != ''
         uses: actions/upload-artifact@v4
         with:
           name: community-playlist-oauth-vault
