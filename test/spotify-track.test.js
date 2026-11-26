@@ -1,10 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizePlaylistItem, normalizeSpotifyTrack, parseSpotifyTrackInput } from '../src/lib/spotify-track.js';
+import { normalizePlaylistItem, normalizeSpotifyTrack, parseSpotifyPlaylistInput, parseSpotifyTrackInput } from '../src/lib/spotify-track.js';
 
 test('parses Spotify track URIs and URLs', () => {
   assert.deepEqual(parseSpotifyTrackInput('spotify:track:abc123'), { id: 'abc123', uri: 'spotify:track:abc123' });
   assert.deepEqual(parseSpotifyTrackInput('https://open.spotify.com/track/abc123?si=token'), { id: 'abc123', uri: 'spotify:track:abc123' });
+});
+
+test('parses bare Spotify track IDs and playlist IDs', () => {
+  const trackId = '4EISOJDYezvr8UtIeOy3sj';
+  const playlistId = '7IS0sJMyOz3XAhqRxkOwkC';
+  assert.deepEqual(parseSpotifyTrackInput(trackId), {
+    id: trackId,
+    uri: 'spotify:track:' + trackId
+  });
+  assert.deepEqual(parseSpotifyPlaylistInput(playlistId), {
+    id: playlistId,
+    uri: 'spotify:playlist:' + playlistId
+  });
+  assert.deepEqual(parseSpotifyPlaylistInput('https://open.spotify.com/playlist/' + playlistId), {
+    id: playlistId,
+    uri: 'spotify:playlist:' + playlistId
+  });
 });
 
 test('leaves text search inputs for the API resolver', () => {

@@ -20,18 +20,26 @@ function encryptionKey(value) {
   return key;
 }
 
+export function validateSpotifyOAuthClientId(value) {
+  const clientId = String(value || '').trim();
+  if (!clientId) {
+    throw new Error('SPOTIFY_CLIENT_ID is missing. Add the Spotify Web API OAuth Client ID as a repository Actions variable named SPOTIFY_CLIENT_ID.');
+  }
+  if (clientId.includes('*')) {
+    throw new Error('SPOTIFY_CLIENT_ID appears to be masked. Store the public OAuth Client ID as a repository Actions variable; GitHub masks secrets in job summaries and would corrupt the authorization link.');
+  }
+  if (/^spak_/i.test(clientId)) {
+    throw new Error('SPOTIFY_CLIENT_ID starts with spak_ and is a sensitive Spotify Soloist API key, not a Web API OAuth Client ID. Remove it from Actions Variables and revoke/rotate it because it has been exposed. This controller does not use Soloist keys. Set SPOTIFY_CLIENT_ID to the OAuth Client ID from your Spotify Developer Dashboard app settings.');
+  }
+  return clientId;
+}
+
 export function createSpotifyPkceHandoff({
   clientId,
   redirectUri = DEFAULT_SPOTIFY_REDIRECT_URI,
   now = Date.now()
 }) {
-  const spotifyClientId = String(clientId || '').trim();
-  if (!spotifyClientId) {
-    throw new Error('SPOTIFY_CLIENT_ID is missing. Add the public Spotify Client ID as a repository Actions variable named SPOTIFY_CLIENT_ID, not as a secret.');
-  }
-  if (spotifyClientId.includes('*')) {
-    throw new Error('SPOTIFY_CLIENT_ID appears to be masked. Store the public Spotify Client ID as a repository Actions variable, not a secret. GitHub masks secrets in job summaries, which would corrupt the authorization link.');
-  }
+  const spotifyClientId = validateSpotifyOAuthClientId(clientId);
   const redirect = new URL(redirectUri);
   if (
     redirect.protocol !== 'http:' ||
