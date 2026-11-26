@@ -101,9 +101,12 @@ async function main() {
     page.setDefaultTimeout(120000);
     page.on('console', message => {
       const value = message.text();
-      if (value.startsWith('[community-playlist:e2e]')) {
+      if (value.startsWith('[community-playlist:e2e]') || value.startsWith('[community-playlist]')) {
         console.info(value);
       }
+    });
+    page.on('pageerror', error => {
+      console.error('[community-playlist:ci] Browser page error: ' + error.message);
     });
 
     await page.goto('http://127.0.0.1:' + port + '/', { waitUntil: 'load' });
