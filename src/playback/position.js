@@ -37,10 +37,7 @@ export function resolveNextPlaylistOffset({ playlistTracks, currentTrackUri, upc
     const nextTrackUri = queueUris[0];
     const nextIndices = [];
     playlistTracks.forEach((item, index) => {
-      if (item?.uri === nextTrackUri &&
-          (!currentIndices.length || currentIndices.some(currentIndex => currentIndex < index))) {
-        nextIndices.push(index);
-      }
+      if (item?.uri === nextTrackUri) nextIndices.push(index);
     });
     if (nextIndices.length !== 1) {
       throw new Error('The next shuffled item occurs more than once in the playlist or cannot be placed after the current item. Its restore position is ambiguous.');
