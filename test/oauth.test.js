@@ -108,7 +108,7 @@ test('Twitch Helix API serializes object request bodies as JSON', async () => {
   tokenStore.save({
     accessToken: 'access',
     refreshToken: 'refresh',
-    expiresAt: Date.now() + 60_000,
+    expiresAt: Date.now() + 5 * 60_000,
     scopes: ['bits:read', 'user:read:chat']
   });
 
