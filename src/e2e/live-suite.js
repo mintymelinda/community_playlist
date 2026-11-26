@@ -208,7 +208,7 @@ export function createLiveE2ESuite(app) {
     let completed = false;
     const runId = 'community-playlist-e2e-' + crypto.randomUUID();
     try {
-      const { snapshot, trackX, trackY, queue } = await preflight();
+      const { snapshot, trackX, trackY, queue, playlistUri } = await preflight();
       checks.push({ name: 'Twitch and Spotify authentication', passed: true });
       checks.push({ name: 'Playlist and Connect device preflight', passed: true });
 
@@ -246,7 +246,7 @@ export function createLiveE2ESuite(app) {
           app.spotify.getPlaybackState(),
           Promise.resolve(app.store.get())
         ]);
-        return playback?.context?.uri === app.config.playlistUri &&
+        return playback?.context?.uri === playlistUri &&
           playback?.item?.uri === snapshot.nextTrackUri &&
           current.mode === 'idle' &&
           !current.active &&
@@ -289,6 +289,7 @@ export function createLiveE2ESuite(app) {
           app.coordinator.handoff('The E2E suite stopped before it could verify safe playlist restoration. Requests were preserved for manual recovery.');
         }
       }
+      await restorePlaybackSettings();
     }
   }
 
@@ -446,7 +447,7 @@ export function createLiveE2ESuite(app) {
     let completed = false;
     const runId = 'community-playlist-live-chat-' + crypto.randomUUID();
     try {
-      const { snapshot, trackX, trackY } = await preflight();
+      const { snapshot, trackX, trackY, playlistUri } = await preflight();
       const playlistBefore = (await app.spotify.getPlaylistItems(app.coordinator.playlistId)).map(item => item?.uri || null);
       const firstId = runId + '-redemption-x';
       const secondId = runId + '-redemption-y';
@@ -502,6 +503,7 @@ export function createLiveE2ESuite(app) {
           app.coordinator.handoff('The real chat skip E2E test stopped before playlist restoration could be verified. Requests were preserved for manual recovery.');
         }
       }
+      await restorePlaybackSettings();
     }
   }
 
