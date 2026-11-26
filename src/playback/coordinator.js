@@ -6,13 +6,26 @@ function trackUri(state) {
 }
 
 export class PlaybackCoordinator {
-  constructor({ spotify, store, playlistUri, playlistId, deviceId = '', pollIntervalMs = 2000, logger = console, timers = globalThis }) {
+  constructor({
+    spotify,
+    store,
+    playlistUri,
+    playlistId,
+    deviceId = '',
+    pollIntervalMs = 2000,
+    playbackConfirmationTimeoutMs = 20000,
+    playbackConfirmationPollMs = 400,
+    logger = console,
+    timers = globalThis
+  }) {
     this.spotify = spotify;
     this.store = store;
     this.playlistUri = playlistUri;
     this.playlistId = playlistId;
     this.configuredDeviceId = deviceId;
     this.pollIntervalMs = pollIntervalMs;
+    this.playbackConfirmationTimeoutMs = Math.max(1000, Number(playbackConfirmationTimeoutMs) || 20000);
+    this.playbackConfirmationPollMs = Math.max(100, Number(playbackConfirmationPollMs) || 400);
     this.logger = logger;
     this.timers = timers;
     this.serial = new SerialExecutor();
@@ -177,11 +190,36 @@ export class PlaybackCoordinator {
   }
 
   async waitForTrack(uri, deviceId) {
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      const state = await this.spotify.getPlaybackState();
-      if (state?.device?.id === deviceId && trackUri(state) === uri) return state;
-      await new Promise(resolve => setTimeout(resolve, 400));
+    const deadline = Date.now() + this.playbackConfirmationTimeoutMs;
+    let lastState = null;
+    let lastError = null;
+
+    while (Date.now() < deadline) {
+      try {
+        const state = await this.spotify.getPlaybackState();
+        if (state?.device?.id === deviceId && trackUri(state) === uri) return state;
+        lastState = state || null;
+      } catch (error) {
+        // Spotify can briefly return an unavailable/stale player state after
+        // accepting a play command. Keep polling until the bounded deadline.
+        lastError = error;
+      }
+
+      const remainingMs = deadline - Date.now();
+      if (remainingMs > 0) {
+        await new Promise(resolve => setTimeout(
+          resolve,
+          Math.min(this.playbackConfirmationPollMs, remainingMs)
+        ));
+      }
     }
+
+    const observedUri = trackUri(lastState) || 'none';
+    const observedDevice = lastState?.device?.id || 'none';
+    const diagnostic = 'Expected track ' + uri + ' on device ' + deviceId +
+      '; last observed track ' + observedUri + ' on device ' + observedDevice + '.' +
+      (lastError ? ' Last playback-state API error: ' + lastError.message : '');
+    this.logger.warn('[community-playlist] Spotify playback confirmation timed out. ' + diagnostic);
     return null;
   }
 
