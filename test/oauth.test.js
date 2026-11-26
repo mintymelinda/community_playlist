@@ -4,6 +4,7 @@ import { MemoryStorage } from '../src/lib/queue-store.js';
 import { TokenStore } from '../src/lib/token-store.js';
 import { TwitchAuth } from '../src/auth/twitch-auth.js';
 import { SpotifyAuth } from '../src/auth/spotify-auth.js';
+import { SpotifyClient } from '../src/spotify/client.js';
 
 function jsonResponse(value, status = 200) {
   return new Response(JSON.stringify(value), {
@@ -98,6 +99,28 @@ test('TwitchAuth binds the browser default fetch receiver when validating a toke
     const identity = await auth.validate();
     assert.equal(called, true);
     assert.equal(identity.user_id, 'broadcaster-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('SpotifyClient binds the browser default fetch receiver', async () => {
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async function (url, options = {}) {
+    assert.equal(this, globalThis, 'default fetch must be invoked with the global receiver');
+    assert.equal(url, 'https://api.spotify.com/v1/me/player/devices');
+    assert.equal(options.headers.Authorization, 'Bearer spotify-access');
+    called = true;
+    return jsonResponse({ devices: [] });
+  };
+
+  try {
+    const client = new SpotifyClient({
+      auth: { getAccessToken: async () => 'spotify-access' }
+    });
+    assert.deepEqual(await client.getDevices(), []);
+    assert.equal(called, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
