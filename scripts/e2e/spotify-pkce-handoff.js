@@ -29,7 +29,7 @@ export function validateSpotifyOAuthClientId(value) {
     throw new Error('SPOTIFY_CLIENT_ID appears to be masked. Store the public OAuth Client ID as a repository Actions variable; GitHub masks secrets in job summaries and would corrupt the authorization link.');
   }
   if (/^spak_/i.test(clientId)) {
-    throw new Error('SPOTIFY_CLIENT_ID starts with spak_ and looks like a Spotify Soloist device/pairing key, not a Web API OAuth Client ID. Copy the Client ID from your Spotify Developer Dashboard app settings.');
+    throw new Error('SPOTIFY_CLIENT_ID starts with spak_ and is a sensitive Spotify Soloist API key, not a Web API OAuth Client ID. Remove it from Actions Variables and revoke/rotate it because it has been exposed. This controller does not use Soloist keys. Set SPOTIFY_CLIENT_ID to the OAuth Client ID from your Spotify Developer Dashboard app settings.');
   }
   return clientId;
 }
