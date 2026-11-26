@@ -16,7 +16,7 @@ on:
         required: false
         type: string
       spotify_callback_url:
-        description: Complete loopback URL after approving Spotify (required for run_live_test)
+        description: Complete loopback URL including code and state after Spotify approval (treat as a one-time credential)
         required: false
         type: string
       run_real_chat_test:
