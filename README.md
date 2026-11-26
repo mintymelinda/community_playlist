@@ -12,7 +12,7 @@ Spotify itself handles all audio playback. This project does not capture, proces
 - Spotify Authorization Code with PKCE, token refresh, device selection, playlist inspection, Spotify track URL/URI parsing, and text search.
 - Persistent application-owned FIFO request queue, retryable redemption intake, request-ID idempotency, serialized playback changes, and conservative browser-reload recovery.
 - Broadcaster/moderator-only \`!skip\`, advancing directly to the next viewer request without calling Spotify's playlist skip endpoint.
-- Playback safeguards for manual queue entries, shuffle/repeat, changed devices, manual playback changes, duplicate playlist tracks, unavailable playlist items, and unexpected playlist edits.
+- Playback safeguards for manual queue entries, repeat mode, shuffle-aware playlist restoration, changed devices, manual playback changes, duplicate playlist tracks, unavailable playlist items, and unexpected playlist edits.
 - Automated tests for OAuth-related helpers, Twitch redemption/chat authorization, retry and duplicate-delivery handling, EventSub reconnect/migration/keepalive lifecycle, request ordering, skip behaviour, storage recovery, Spotify parsing, and playlist restore-position resolution.
 
 ## Requirements
@@ -31,7 +31,7 @@ Spotify itself handles all audio playback. This project does not capture, proces
 3. Copy \`config.example.js\` to \`config.local.js\`. Set the Twitch and Spotify client IDs, exact Spotify redirect URI, and Spotify playlist URI. Leave \`broadcasterId\` blank to use the Twitch-authorized account. Leave \`powerUpId\` blank only when exactly one enabled text-input Power-up exists; otherwise set its ID.
 4. Host the files from a static HTTPS origin. Do not open the page as a \`file://\` URL. Keep \`config.local.js\` on the same origin as the application and do not commit it.
 5. Open the page in the browser tab that will remain active. Open the browser developer console and run \`communityPlaylist.start()\`. Spotify authorization redirects the current tab to Spotify and returns to the configured page. Twitch Device Code authorization then prints a one-time verification URL and code to the console; enter the code at that URL.
-6. Open Spotify on the intended Connect device and start the configured playlist. Turn shuffle and repeat off. Requests are accepted only while the configured playlist is playing on the selected device.
+6. Open Spotify on the intended Connect device and start the configured playlist. Turn repeat off; shuffle may remain on. Requests are accepted only while the configured playlist is playing on the selected device.
 
 Example local configuration:
 
@@ -72,7 +72,7 @@ The controller does not append viewer requests to Spotify's queue. Requests are 
 It refuses to interrupt unless:
 
 - The configured playlist is actively playing on the selected device.
-- Shuffle and repeat are off.
+- Repeat is off. Shuffle may be on when Spotify's upcoming queue identifies one unambiguous next playlist item; ambiguous duplicate positions and non-playlist queue entries are rejected.
 - The current track maps to one unambiguous position in the playlist.
 - The upcoming queue matches the playlist continuation.
 - The playlist has no unavailable or unsupported entries that would make positional restoration unsafe.
@@ -94,7 +94,7 @@ The local E2E runner uses the same Twitch/Spotify OAuth implementations and the 
 3. Add the exact redirect URI `http://127.0.0.1:4173/` to the Spotify app's redirect URI allowlist. Do not substitute `localhost`; Spotify's loopback redirect requires an explicit IP literal. The runner defaults to port 4173. If you change `PORT`, change `SPOTIFY_REDIRECT_URI` to the exact matching `http://127.0.0.1:PORT/` value.
 4. Use a disposable browser profile. Start the test server with `npm run e2e:serve`, then open `http://127.0.0.1:4173/`.
 5. Open the browser developer console and run `communityPlaylist.start()`. Complete Spotify PKCE authorization and the Twitch Device Code flow. These flows happen directly between the browser and their providers; the local server does not receive or persist OAuth tokens.
-6. On the target Spotify Connect device, play the configured playlist with shuffle and repeat off. Choose X and Y so neither is the currently playing song nor the playlist track that should resume next. Make sure the playlist has at least one upcoming track.
+6. On the target Spotify Connect device, play the configured playlist with repeat off; shuffle may be on. Choose X and Y so neither is the currently playing song nor the exact next track shown in Spotify's upcoming queue. Make sure the playlist has at least one upcoming track.
 7. Run `await communityPlaylist.e2e.preflight()`, then `await communityPlaylist.e2e.runPlaybackSequence()`.
 8. Run `await communityPlaylist.e2e.verifyProviderTokenRefresh()` to force both providers through their real refresh-token flow, and `await communityPlaylist.e2e.verifyEventSubReconnect()` to deliberately disconnect EventSub and verify the replacement session has both subscriptions.
 
@@ -144,7 +144,7 @@ Open **Actions → Live Twitch and Spotify E2E → Run workflow**:
 2. Spotify redirects to `http://127.0.0.1:4173/`. The page may fail to load; this is expected. **Copy the complete URL from the browser address bar, including the query string with both `code` and `state`.** It must look like `http://127.0.0.1:4173/?code=...&state=...`; keep `127.0.0.1`, port `4173`, and the trailing slash exactly as shown (do not substitute `localhost`), and do not copy only `http://127.0.0.1:4173/`.
 3. Start the workflow again, select stage `run_live_test`, enter the numeric run ID from that exact `authorize_spotify` run in `spotify_auth_run_id`, and paste the complete redirect URL into `spotify_callback_url`. Treat the URL as a one-time credential: do not post it in issues, chats, or screenshots. Do this promptly because Spotify authorization codes are short-lived.
 4. The CI run exchanges the Spotify code using the encrypted PKCE verifier. It then starts Twitch Device Code authorization. Open the Twitch activation URL shown in the Actions log/summary, enter the one-time code, and approve access using the broadcaster account. CI polls Twitch and continues automatically after approval.
-5. Before the playback sequence starts, have the configured Spotify playlist playing on the target Connect device, with shuffle and repeat off and at least one upcoming track.
+5. Before the playback sequence starts, have the configured Spotify playlist playing on the target Connect device, with repeat off and at least one upcoming track. Shuffle may be enabled.
 
 The Spotify PKCE verifier is encrypted with AES-256-GCM in a one-day artifact because workflow artifacts can be downloaded by people with repository read access. The encryption key remains in Actions Secrets. The Spotify callback URL is masked in workflow logs. OAuth access/refresh tokens are not uploaded as artifacts, logged, or saved as Actions secrets.
 

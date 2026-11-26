@@ -103,8 +103,8 @@ export class PlaybackCoordinator {
     if (playback.context?.type !== 'playlist' || playback.context?.uri !== this.playlistUri) {
       throw new Error('The configured playlist must be the active Spotify playback context.');
     }
-    if (playback.shuffle_state || playback.repeat_state !== 'off') {
-      throw new Error('Turn Spotify shuffle and repeat off before using viewer requests.');
+    if (playback.repeat_state !== 'off') {
+      throw new Error('Turn Spotify repeat off before using viewer requests.');
     }
     const currentUri = trackUri(playback);
     if (!currentUri) throw new Error('Spotify did not report the current playlist track.');
@@ -116,7 +116,8 @@ export class PlaybackCoordinator {
     const position = resolveNextPlaylistOffset({
       playlistTracks,
       currentTrackUri: currentUri,
-      upcomingTracks: upcoming
+      upcomingTracks: upcoming,
+      shuffle: playback.shuffle_state === true
     });
 
     return {

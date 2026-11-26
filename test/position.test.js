@@ -12,6 +12,33 @@ test('resolves the next playlist offset from the matching upcoming queue', () =>
   }), { nextOffset: 1, nextTrackUri: 'spotify:track:b' });
 });
 
+test('resolves the next playlist offset from Spotify queue order when shuffle is enabled', () => {
+  assert.deepEqual(resolveNextPlaylistOffset({
+    playlistTracks: tracks,
+    currentTrackUri: 'spotify:track:a',
+    upcomingTracks: [tracks[2], tracks[3], tracks[1]],
+    shuffle: true
+  }), { nextOffset: 2, nextTrackUri: 'spotify:track:c' });
+});
+
+test('rejects a shuffled queue containing an item outside the configured playlist', () => {
+  assert.throws(() => resolveNextPlaylistOffset({
+    playlistTracks: tracks,
+    currentTrackUri: 'spotify:track:a',
+    upcomingTracks: [tracks[2], { uri: 'spotify:track:manual' }],
+    shuffle: true
+  }), /outside the configured playlist/);
+});
+
+test('rejects a shuffled next track with duplicate playlist positions', () => {
+  assert.throws(() => resolveNextPlaylistOffset({
+    playlistTracks: [tracks[0], tracks[1], tracks[2], tracks[2]],
+    currentTrackUri: 'spotify:track:a',
+    upcomingTracks: [tracks[2], tracks[1]],
+    shuffle: true
+  }), /restore position is ambiguous/);
+});
+
 test('rejects a manually modified queue before interrupting playback', () => {
   assert.throws(() => resolveNextPlaylistOffset({
     playlistTracks: tracks,

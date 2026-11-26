@@ -26,7 +26,7 @@ A no-dependency local runner is available through `npm run e2e:serve`. Copy `.en
 
 Spotify's registered redirect URI must be exactly `http://127.0.0.1:4173/` for the default port (or the matching loopback IP and port if `PORT` is changed). Spotify requires loopback redirects to use an explicit IP literal rather than `localhost`; see the [Spotify redirect URI requirements](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri) and [PKCE guide](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow). Twitch Device Code authorization is designed for public clients and does not require a client secret; see [Twitch OAuth token documentation](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/).
 
-Start the server, open the loopback URL in a disposable browser profile, and run `communityPlaylist.start()`. With the configured playlist playing on the target Connect device (shuffle/repeat off), run:
+Start the server, open the loopback URL in a disposable browser profile, and run `communityPlaylist.start()`. With the configured playlist playing on the target Connect device (repeat off; shuffle may be on), run:
 
 ```js
 await communityPlaylist.e2e.preflight()
@@ -53,7 +53,7 @@ In the first workflow run, select stage `authorize_spotify`, open the authorizat
 
 The default run verifies live preflight, real Spotify X → Y playback and restore, unauthorized skip rejection, broadcaster skip, no playlist mutation, and Twitch EventSub reconnection. Its redemption notifications are synthetic and spend no Bits. The optional `run_real_chat_test` waits for actual viewer and broadcaster/moderator `!skip` messages. It does not redeem a real Custom Power-up.
 
-The Spotify Connect device must be online and playing the configured playlist, with shuffle/repeat off and an upcoming playlist track. X and Y must be distinct from one another, the current track, and the next playlist track. A failure after playback takeover may require manual playlist recovery. GitHub Actions concurrency prevents overlapping live test runs.
+The Spotify Connect device must be online and playing the configured playlist, with repeat off and an upcoming playlist track. Shuffle may be enabled. X and Y must be distinct from one another, the current track, and the exact next item shown in Spotify's upcoming queue. A failure after playback takeover may require manual playlist recovery. GitHub Actions concurrency prevents overlapping live test runs.
 
 ## Spotify
 
@@ -78,10 +78,10 @@ Sources:
 Viewer requests are not appended to Spotify's queue. They are stored locally and serialized through an application-owned FIFO. Before taking over playback, the coordinator:
 
 1. Confirms the configured playlist is actively playing on the intended device.
-2. Requires shuffle and repeat to be off.
+2. Requires repeat mode to be off; shuffle may remain enabled.
 3. Reads the playlist items and Spotify's upcoming queue.
-4. Matches the current track and upcoming queue against the playlist to identify one unambiguous next offset.
-5. Refuses to take over if there are unavailable entries, duplicate-track ambiguity, or manual queue entries ahead of the expected playlist continuation.
+4. When shuffle is off, matches the current track and upcoming queue against the sequential playlist continuation. When shuffle is on, maps Spotify's first upcoming track to its unique playlist offset and verifies that the reported queue entries belong to the playlist.
+5. Refuses to take over if there are unavailable entries, duplicate-track ambiguity, missing shuffled queue data, or manual queue entries outside the configured playlist.
 
 It then starts each request as a single URI, verifies the resulting current track, and watches playback state. When the request queue empties, it restores the saved playlist context at the saved offset, rather than calling Spotify's next endpoint.
 
@@ -89,12 +89,12 @@ This is a conservative candidate strategy, not a proven guarantee. Spotify does 
 
 ### Required real-device test
 
-1. Play a playlist with at least four tracks and record the current track, the next three queue entries, device ID, shuffle/repeat settings, and playback state.
+1. Play a playlist with at least four tracks and record the current track, the next three queue entries, device ID, shuffle/repeat settings, and playback state. Repeat the test with shuffle both off and on; repeat mode must remain off.
 2. Redeem a request while track A is playing; confirm request X becomes the current item.
 3. Redeem a second request while X is playing; confirm it is queued locally and does not mutate Spotify's playlist or queue.
 4. Allow X to finish or issue authorized \`!skip\`; confirm Y plays next.
 5. Finish/skip Y; confirm playlist track B plays, not A or C.
-6. Repeat with a manually queued Spotify track, duplicate playlist entries, a device change, browser background throttling, temporary network loss, and tab reload.
+6. Repeat with shuffle enabled, a manually queued Spotify track, duplicate playlist entries, a device change, browser background throttling, temporary network loss, and tab reload.
 7. Confirm a manual pause does not advance the application queue and manual playback changes trigger handoff instead of controller takeover.
 
 Record only the device type, playback sequence, response codes, and timing. Never record access tokens, refresh tokens, authorization codes, or PKCE values.

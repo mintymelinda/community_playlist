@@ -42,8 +42,8 @@ class FakeSpotify {
       context: null,
       item,
       is_playing: true,
-      shuffle_state: false,
-      repeat_state: 'off',
+      shuffle_state: this.current.shuffle_state ?? false,
+      repeat_state: this.current.repeat_state ?? 'off',
       progress_ms: 0
     };
   }
@@ -54,8 +54,8 @@ class FakeSpotify {
       context: { type: 'playlist', uri },
       item: tracks[offset],
       is_playing: true,
-      shuffle_state: false,
-      repeat_state: 'off',
+      shuffle_state: this.current.shuffle_state ?? false,
+      repeat_state: this.current.repeat_state ?? 'off',
       progress_ms: 0
     };
   }
@@ -100,6 +100,37 @@ test('plays viewer requests FIFO ahead of the saved playlist continuation', asyn
   assert.equal(store.get().snapshot, null);
   assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
   assert.equal(spotify.current.item.uri, tracks[1].uri);
+});
+
+test('preserves the next shuffled playlist track and shuffle setting across requests', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  spotify.current.shuffle_state = true;
+  spotify.getQueue = async () => [tracks[3], tracks[1], tracks[2]];
+
+  await coordinator.enqueue(request('shuffled-request', { ...tracks[2], name: 'X' }));
+
+  assert.equal(store.get().snapshot.nextOffset, 3);
+  assert.equal(store.get().snapshot.nextTrackUri, tracks[3].uri);
+  assert.equal(spotify.current.shuffle_state, true);
+
+  assert.equal(await coordinator.skip(), true);
+  assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 3, targetDevice: deviceId }]);
+  assert.equal(spotify.current.item.uri, tracks[3].uri);
+  assert.equal(spotify.current.shuffle_state, true);
+});
+
+test('still refuses repeat mode even when shuffle-aware position resolution is available', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  spotify.current.shuffle_state = true;
+  spotify.current.repeat_state = 'context';
+
+  await assert.rejects(
+    coordinator.enqueue(request('repeat-enabled-request', { ...tracks[2], name: 'X' })),
+    /Turn Spotify repeat off/
+  );
+  assert.equal(spotify.played.length, 0);
+  assert.equal(store.get().active, null);
+  assert.equal(store.get().pending[0].id, 'repeat-enabled-request');
 });
 
 test('keeps the original next-track offset when Spotify advances before pending requests finish', async () => {
