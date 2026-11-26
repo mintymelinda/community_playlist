@@ -102,6 +102,19 @@ test('plays viewer requests FIFO ahead of the saved playlist continuation', asyn
   assert.equal(spotify.current.item.uri, tracks[1].uri);
 });
 
+test('captures the playlist continuation when the current Spotify URI is not in the playlist response', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  spotify.current.item = { uri: 'spotify:track:spotify-relinked-current', duration_ms: 180000 };
+  spotify.getQueue = async () => tracks.slice(1);
+
+  await coordinator.enqueue(request('relinked-current', { ...tracks[3], name: 'X' }));
+
+  assert.equal(store.get().snapshot.currentTrackUri, 'spotify:track:spotify-relinked-current');
+  assert.equal(store.get().snapshot.nextOffset, 1);
+  assert.equal(store.get().snapshot.nextTrackUri, tracks[1].uri);
+  assert.equal(spotify.played[0].uri, tracks[3].uri);
+});
+
 test('captures the next playable playlist item after unavailable placeholders', async () => {
   const { spotify, store, coordinator } = createCoordinator();
   spotify.getPlaylistItems = async () => [tracks[0], null, tracks[1], tracks[2]];
