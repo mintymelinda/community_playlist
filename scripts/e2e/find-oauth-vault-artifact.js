@@ -45,7 +45,6 @@ export async function findLatestOAuthVaultArtifact({
 async function main() {
   const repository = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN;
-  const currentRunId = process.env.GITHUB_RUN_ID;
   const outputPath = process.env.GITHUB_OUTPUT;
   if (!outputPath) throw new Error('GITHUB_OUTPUT is unavailable.');
 
