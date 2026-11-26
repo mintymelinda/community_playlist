@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseSpotifyPlaylistInput, parseSpotifyTrackInput } from '../../src/lib/spotify-track.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const HOST = '127.0.0.1';
@@ -57,24 +58,29 @@ export function buildConfig(env = process.env) {
 
   const twitchClientId = required(env, 'TWITCH_CLIENT_ID');
   const spotifyClientId = required(env, 'SPOTIFY_CLIENT_ID');
-  const playlistUri = required(env, 'SPOTIFY_PLAYLIST_URI');
-  const e2eTrackX = required(env, 'E2E_TRACK_X');
-  const e2eTrackY = required(env, 'E2E_TRACK_Y');
-  if (e2eTrackX === e2eTrackY) throw new Error('E2E_TRACK_X and E2E_TRACK_Y must be different.');
+  const playlist = parseSpotifyPlaylistInput(required(env, 'SPOTIFY_PLAYLIST_URI'));
+  if (!playlist) {
+    throw new Error('SPOTIFY_PLAYLIST_URI must be a Spotify playlist ID, URI, or URL.');
+  }
+  const trackX = parseSpotifyTrackInput(required(env, 'E2E_TRACK_X'));
+  const trackY = parseSpotifyTrackInput(required(env, 'E2E_TRACK_Y'));
+  if (!trackX) throw new Error('E2E_TRACK_X must be a Spotify track ID, URI, or URL.');
+  if (!trackY) throw new Error('E2E_TRACK_Y must be a Spotify track ID, URI, or URL.');
+  if (trackX.id === trackY.id) throw new Error('E2E_TRACK_X and E2E_TRACK_Y must be different Spotify tracks.');
 
   return Object.freeze({
     twitchClientId,
     spotifyClientId,
     spotifyRedirectUri: redirectUri,
-    playlistUri,
+    playlistUri: playlist.uri,
     broadcasterId: String(env.TWITCH_BROADCASTER_ID || '').trim(),
     powerUpId: String(env.TWITCH_POWER_UP_ID || '').trim(),
     spotifyDeviceId: String(env.SPOTIFY_DEVICE_ID || '').trim(),
     pollIntervalMs: Math.max(1000, Number(env.POLL_INTERVAL_MS) || 2000),
     maxPendingRequests: 10,
     e2eMode: true,
-    e2eTrackX,
-    e2eTrackY
+    e2eTrackX: trackX.uri,
+    e2eTrackY: trackY.uri
   });
 }
 
