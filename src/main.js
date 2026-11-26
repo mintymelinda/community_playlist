@@ -94,7 +94,7 @@ class CommunityPlaylistApp {
       rejectAcquired = reject;
     });
     const held = new Promise(resolve => { this.controllerLockRelease = resolve; });
-    const lockName = 'community-playlist-controller:' + this.autoStartKey;
+    const lockName = 'community-playlist-controller';
 
     this.controllerLockTask = lockManager.request(lockName, { mode: 'exclusive', ifAvailable: true }, async lock => {
       if (!lock) {
