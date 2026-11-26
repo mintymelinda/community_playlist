@@ -253,6 +253,26 @@ test('waits for delayed Spotify playback-state updates after play is accepted', 
   assert.ok(reads > 6, 'confirmation should continue beyond the old six-read limit');
 });
 
+test('confirms Spotify-relinked playback using the original linked_from URI', async () => {
+  const { spotify, coordinator } = createCoordinator();
+  const requestedUri = tracks[2].uri;
+  spotify.current = {
+    ...spotify.current,
+    item: {
+      ...tracks[3],
+      linked_from: {
+        id: tracks[2].id,
+        uri: requestedUri
+      }
+    }
+  };
+
+  const confirmed = await coordinator.waitForTrack(requestedUri, deviceId);
+
+  assert.equal(confirmed.item.uri, tracks[3].uri);
+  assert.equal(confirmed.item.linked_from.uri, requestedUri);
+});
+
 test('keeps waiting through transient playback-state API errors', async () => {
   const { coordinator } = createCoordinator({
     playbackConfirmationTimeoutMs: 2000,
