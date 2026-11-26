@@ -26,7 +26,7 @@ function validateCredential(credential, provider) {
     refreshToken: credential.refreshToken,
     scopes: [...new Set(credential.scopes)]
   };
-  if (provider === 'twitch' && credential.userId !== undefined) {
+  if (provider.toLowerCase() === 'twitch' && credential.userId !== undefined) {
     result.userId = String(credential.userId);
   }
   return result;
