@@ -236,6 +236,7 @@ async function obtainTwitchSession(vault) {
 async function writePrivateJson(path, value) {
   const directory = resolve('.ci-auth');
   await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmod(directory, 0o700);
   const temporaryPath = path + '.tmp';
   await writeFile(temporaryPath, JSON.stringify(value), { mode: 0o600 });
   await chmod(temporaryPath, 0o600);
