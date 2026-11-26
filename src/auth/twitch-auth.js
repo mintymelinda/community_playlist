@@ -148,12 +148,16 @@ export class TwitchAuth {
 
   async api(path, options = {}, retry = true) {
     const token = await this.getAccessToken();
+    const requestBody = options.body;
     const response = await this.fetch('https://api.twitch.tv/helix' + path, {
       ...options,
+      ...(requestBody === undefined ? {} : {
+        body: typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody)
+      }),
       headers: {
         'Client-Id': this.clientId,
         Authorization: 'Bearer ' + token,
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(requestBody !== undefined && requestBody !== null ? { 'Content-Type': 'application/json' } : {}),
         ...(options.headers || {})
       }
     });
