@@ -175,6 +175,7 @@ function createTwitchAuth(existingCredential) {
 
   return new TwitchAuth({
     clientId: required('TWITCH_CLIENT_ID'),
+    clientSecret: process.env.TWITCH_CLIENT_SECRET,
     scopes: TWITCH_SCOPES,
     tokenStore,
     onDeviceCode: info => {
