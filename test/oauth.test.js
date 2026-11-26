@@ -66,6 +66,43 @@ test('Twitch Device Code flow polls pending authorization then validates the bro
   assert.equal(urls.some(url => url.endsWith('/validate')), true);
 });
 
+test('TwitchAuth binds the browser default fetch receiver when validating a token', async () => {
+  const tokenStore = new TokenStore(new MemoryStorage(), 'twitch-default-fetch');
+  tokenStore.save({
+    accessToken: 'access',
+    refreshToken: 'refresh',
+    expiresAt: Date.now() + 60_000,
+    scopes: ['bits:read', 'user:read:chat']
+  });
+
+  const originalFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async function (url, options = {}) {
+    assert.equal(this, globalThis, 'default fetch must be invoked with the global receiver');
+    assert.equal(url, 'https://id.twitch.tv/oauth2/validate');
+    assert.equal(options.headers.Authorization, 'OAuth access');
+    called = true;
+    return jsonResponse({
+      client_id: 'twitch-client',
+      user_id: 'broadcaster-1',
+      scopes: ['bits:read', 'user:read:chat']
+    });
+  };
+
+  try {
+    const auth = new TwitchAuth({
+      clientId: 'twitch-client',
+      scopes: ['bits:read', 'user:read:chat'],
+      tokenStore
+    });
+    const identity = await auth.validate();
+    assert.equal(called, true);
+    assert.equal(identity.user_id, 'broadcaster-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('Twitch refresh stores the rotated single-use refresh token', async () => {
   const tokenStore = new TokenStore(new MemoryStorage(), 'twitch');
   tokenStore.save({

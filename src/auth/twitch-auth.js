@@ -20,7 +20,7 @@ async function postForm(url, values, fetchImpl) {
 }
 
 export class TwitchAuth {
-  constructor({ clientId, scopes, tokenStore, fetchImpl = fetch, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), onDeviceCode = info => console.info('[community-playlist] Twitch authorization required:', info) }) {
+  constructor({ clientId, scopes, tokenStore, fetchImpl = globalThis.fetch.bind(globalThis), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), onDeviceCode = info => console.info('[community-playlist] Twitch authorization required:', info) }) {
     this.clientId = clientId;
     this.scopes = scopes;
     this.tokenStore = tokenStore;
