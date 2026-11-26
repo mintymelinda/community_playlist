@@ -195,7 +195,7 @@ function createTwitchAuth(existingCredential) {
 }
 
 function shouldReauthorizeTwitch(error) {
-  return /invalid refresh token|invalid_grant|missing required scopes|different Client ID/i.test(error?.message || '');
+  return /invalid refresh token|invalid_grant|missing required scopes|different Client ID|different account than TWITCH_BROADCASTER_ID/i.test(error?.message || '');
 }
 
 function validateTwitchIdentity(identity) {
@@ -206,17 +206,22 @@ function validateTwitchIdentity(identity) {
   return identity;
 }
 
-async function obtainTwitchSession(vault) {
+async function obtainTwitchSession(vault, persistCredential) {
   const hasReusableCredential = Boolean(
     vault?.twitch?.refreshToken &&
     hasScopes(vault.twitch.scopes, TWITCH_SCOPES)
   );
+  if (!hasReusableCredential && vault?.twitch) {
+    await persistCredential(null, null);
+  }
   let twitchAuth = createTwitchAuth(hasReusableCredential ? vault.twitch : null);
 
   if (hasReusableCredential) {
     try {
       await twitchAuth.getAccessToken();
+      await persistCredential(twitchAuth.session, null);
       const identity = validateTwitchIdentity(await twitchAuth.validate());
+      await persistCredential(twitchAuth.session, identity);
       console.info('[community-playlist:ci] Reused saved Twitch authorization and refreshed its access token.');
       return { auth: twitchAuth, identity };
     } catch (error) {
@@ -224,11 +229,18 @@ async function obtainTwitchSession(vault) {
       console.warn('[community-playlist:ci] Saved Twitch refresh token is no longer usable; requesting broadcaster approval again.');
       twitchAuth.tokenStore.clear();
       twitchAuth.session = null;
+      await persistCredential(null, null);
     }
   }
 
-  await twitchAuth.authorize();
+  try {
+    await twitchAuth.authorize();
+  } catch (error) {
+    if (twitchAuth.session?.refreshToken) await persistCredential(twitchAuth.session, twitchAuth.identity);
+    throw error;
+  }
   const identity = validateTwitchIdentity(twitchAuth.identity || await twitchAuth.validate());
+  await persistCredential(twitchAuth.session, identity);
   console.info('[community-playlist:ci] Twitch Device Code authorization: PASS');
   return { auth: twitchAuth, identity };
 }
@@ -246,29 +258,57 @@ async function writePrivateJson(path, value) {
 
 async function main() {
   const key = required('SPOTIFY_PKCE_HANDOFF_KEY');
-  const vault = await readExistingVault(key);
+  const vault = await readExistingVault(key) || {
+    version: 1,
+    updatedAt: Date.now(),
+    spotify: null,
+    twitch: null
+  };
+  const persistVault = async () => {
+    vault.updatedAt = Date.now();
+    await writePrivateJson(VAULT_PATH, encryptOAuthVault(vault, key));
+  };
+
   const spotify = await obtainSpotifySession(vault);
-  const twitchResult = await obtainTwitchSession(vault);
+  if (!spotify.refreshToken) {
+    throw new Error('Spotify did not provide a refresh token, so its authorization cannot be reused on the next run.');
+  }
+  vault.spotify = {
+    refreshToken: spotify.refreshToken,
+    scopes: spotify.scopes
+  };
+  await persistVault();
+
+  const persistTwitchCredential = async (session, identity) => {
+    if (!session?.refreshToken) {
+      vault.twitch = null;
+      await persistVault();
+      return;
+    }
+    vault.twitch = {
+      refreshToken: session.refreshToken,
+      scopes: identity?.scopes || session.scopes || vault.twitch?.scopes || TWITCH_SCOPES,
+      ...(identity?.user_id || vault.twitch?.userId
+        ? { userId: String(identity?.user_id || vault.twitch.userId) }
+        : {})
+    };
+    await persistVault();
+  };
+  const twitchResult = await obtainTwitchSession(vault, persistTwitchCredential);
   const twitch = twitchResult.auth.session;
   const identity = twitchResult.identity;
 
-  if (!spotify.refreshToken || !twitch?.refreshToken) {
-    throw new Error('Both providers must return refresh tokens before the encrypted OAuth vault can be saved.');
+  if (!twitch?.refreshToken) {
+    throw new Error('Twitch did not provide a refresh token, so its authorization cannot be reused on the next run.');
   }
 
-  const updatedVault = {
-    version: 1,
-    updatedAt: Date.now(),
-    spotify: {
-      refreshToken: spotify.refreshToken,
-      scopes: spotify.scopes
-    },
-    twitch: {
-      refreshToken: twitch.refreshToken,
-      scopes: identity.scopes || TWITCH_SCOPES,
-      userId: String(identity.user_id)
-    }
+  vault.twitch = {
+    refreshToken: twitch.refreshToken,
+    scopes: identity.scopes || TWITCH_SCOPES,
+    userId: String(identity.user_id)
   };
+  await persistVault();
+
   const session = {
     spotify,
     twitch: {
@@ -280,7 +320,6 @@ async function main() {
     }
   };
 
-  await writePrivateJson(VAULT_PATH, encryptOAuthVault(updatedVault, key));
   await writePrivateJson(SESSION_PATH, session);
   mask(spotify.accessToken);
   mask(spotify.refreshToken);
