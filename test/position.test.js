@@ -38,6 +38,15 @@ test('resolves the next playlist offset from Spotify queue order when shuffle is
   }), { nextOffset: 2, nextTrackUri: 'spotify:track:c' });
 });
 
+test('allows the next shuffled item to occur before the current item in playlist order', () => {
+  assert.deepEqual(resolveNextPlaylistOffset({
+    playlistTracks: tracks,
+    currentTrackUri: 'spotify:track:d',
+    upcomingTracks: [tracks[0], tracks[2], tracks[1]],
+    shuffle: true
+  }), { nextOffset: 0, nextTrackUri: 'spotify:track:a' });
+});
+
 test('rejects a shuffled queue containing an item outside the configured playlist', () => {
   assert.throws(() => resolveNextPlaylistOffset({
     playlistTracks: tracks,
