@@ -1,7 +1,7 @@
 import { normalizePlaylistItem, normalizeSpotifyTrack, parseSpotifyTrackInput } from '../lib/spotify-track.js';
 
 export class SpotifyClient {
-  constructor({ auth, fetchImpl = fetch }) {
+  constructor({ auth, fetchImpl = globalThis.fetch.bind(globalThis) }) {
     this.auth = auth;
     this.fetch = fetchImpl;
   }
