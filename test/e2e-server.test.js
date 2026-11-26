@@ -63,11 +63,10 @@ test('rejects text search phrases in deterministic live E2E track settings', () 
   }), /must be a Spotify track ID, URI, or URL/);
 });
 
-test('requires both public client IDs, a playlist, and two distinct test tracks', () => {
+test('requires both public client IDs and two distinct test tracks', () => {
   for (const key of [
     'TWITCH_CLIENT_ID',
     'SPOTIFY_CLIENT_ID',
-    'SPOTIFY_PLAYLIST_URI',
     'E2E_TRACK_X',
     'E2E_TRACK_Y'
   ]) {
@@ -80,6 +79,17 @@ test('requires both public client IDs, a playlist, and two distinct test tracks'
     ...validEnv,
     E2E_TRACK_Y: validEnv.E2E_TRACK_X
   }), /must be different/);
+
+  const currentPlaylistConfig = buildConfig({
+    ...validEnv,
+    SPOTIFY_PLAYLIST_URI: ''
+  });
+  assert.equal(currentPlaylistConfig.playlistUri, '');
+
+  assert.throws(() => buildConfig({
+    ...validEnv,
+    SPOTIFY_PLAYLIST_URI: 'not-a-playlist'
+  }), /must be a Spotify playlist ID, URI, or URL/);
 });
 
 test('requires Spotify loopback redirect to use the exact IPv4 literal and port', () => {

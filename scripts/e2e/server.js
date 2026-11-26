@@ -58,9 +58,10 @@ export function buildConfig(env = process.env) {
 
   const twitchClientId = required(env, 'TWITCH_CLIENT_ID');
   const spotifyClientId = required(env, 'SPOTIFY_CLIENT_ID');
-  const playlist = parseSpotifyPlaylistInput(required(env, 'SPOTIFY_PLAYLIST_URI'));
-  if (!playlist) {
-    throw new Error('SPOTIFY_PLAYLIST_URI must be a Spotify playlist ID, URI, or URL.');
+  const playlistValue = String(env.SPOTIFY_PLAYLIST_URI || '').trim();
+  const playlist = playlistValue ? parseSpotifyPlaylistInput(playlistValue) : null;
+  if (playlistValue && !playlist) {
+    throw new Error('SPOTIFY_PLAYLIST_URI must be a Spotify playlist ID, URI, or URL when provided.');
   }
   const trackX = parseSpotifyTrackInput(required(env, 'E2E_TRACK_X'));
   const trackY = parseSpotifyTrackInput(required(env, 'E2E_TRACK_Y'));
@@ -72,7 +73,7 @@ export function buildConfig(env = process.env) {
     twitchClientId,
     spotifyClientId,
     spotifyRedirectUri: redirectUri,
-    playlistUri: playlist.uri,
+    playlistUri: playlist?.uri || '',
     broadcasterId: String(env.TWITCH_BROADCASTER_ID || '').trim(),
     powerUpId: String(env.TWITCH_POWER_UP_ID || '').trim(),
     spotifyDeviceId: String(env.SPOTIFY_DEVICE_ID || '').trim(),

@@ -156,7 +156,7 @@ async function main() {
     SPOTIFY_REDIRECT_URI: 'http://127.0.0.1:' + port + '/',
     TWITCH_CLIENT_ID: required('TWITCH_CLIENT_ID'),
     SPOTIFY_CLIENT_ID: required('SPOTIFY_CLIENT_ID'),
-    SPOTIFY_PLAYLIST_URI: required('SPOTIFY_PLAYLIST_URI'),
+    SPOTIFY_PLAYLIST_URI: optional('SPOTIFY_PLAYLIST_URI'),
     E2E_TRACK_X: required('E2E_TRACK_X'),
     E2E_TRACK_Y: required('E2E_TRACK_Y'),
     TWITCH_BROADCASTER_ID: optional('TWITCH_BROADCASTER_ID'),

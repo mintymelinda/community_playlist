@@ -41,6 +41,110 @@ function chatNotification(broadcasterId, chatterId, messageId, badges = []) {
 }
 
 export function createLiveE2ESuite(app) {
+  let playbackPreparation = null;
+
+  async function restorePlaybackSettings() {
+    const saved = playbackPreparation;
+    if (!saved) return;
+
+    await app.spotify.setShuffle(saved.shuffle, saved.deviceId);
+    await app.spotify.setRepeat(saved.repeat, saved.deviceId);
+    await waitFor('the original Spotify shuffle and repeat settings to be restored', async () => {
+      const playback = await app.spotify.getPlaybackState();
+      return playback &&
+        playback.shuffle_state === saved.shuffle &&
+        playback.repeat_state === saved.repeat
+        ? playback
+        : null;
+    });
+    playbackPreparation = null;
+  }
+
+  async function preparePlayback() {
+    if (playbackPreparation?.ready) return playbackPreparation;
+
+    const initialPlayback = await app.spotify.getPlaybackState();
+    const devices = initialPlayback?.device?.id ? [] : await app.spotify.getDevices();
+    const activeDeviceId = initialPlayback?.device?.id ||
+      devices.find(device => device.is_active)?.id ||
+      devices[0]?.id ||
+      '';
+    const deviceId = app.config.spotifyDeviceId || activeDeviceId;
+    assert(deviceId, 'No Spotify Connect device is available. Open Spotify on the device to use for the test.');
+    if (app.config.spotifyDeviceId && initialPlayback?.device?.id &&
+        app.config.spotifyDeviceId !== initialPlayback.device.id) {
+      throw new Error('SPOTIFY_DEVICE_ID must be the active Spotify playback device so its original shuffle and repeat settings can be saved.');
+    }
+
+    const playlistUri = app.config.playlistUri ||
+      (initialPlayback?.context?.type === 'playlist' ? initialPlayback.context.uri : '');
+    assert(playlistUri, 'Set SPOTIFY_PLAYLIST_URI or start a Spotify playlist first so the test can use the current playlist.');
+    const playlistId = app.spotify.extractPlaylistId(playlistUri);
+
+    app.playlistUri = playlistUri;
+    app.playlistId = playlistId;
+    app.coordinator.playlistUri = playlistUri;
+    app.coordinator.playlistId = playlistId;
+
+    const state = app.store.get();
+    assert(state.mode !== 'handoff', 'Resolve the controller handoff state before running E2E tests.');
+    assert(!state.active && !state.snapshot, 'The isolated E2E request queue still has an active request or playlist snapshot. Recover it before starting another test.');
+    // This store uses a dedicated E2E key; clearing it does not touch the
+    // production request queue or any Spotify playlist contents.
+    app.store.clear();
+
+    const saved = {
+      deviceId,
+      shuffle: initialPlayback?.shuffle_state === true,
+      repeat: ['track', 'context'].includes(initialPlayback?.repeat_state)
+        ? initialPlayback.repeat_state
+        : 'off',
+      playlistUri,
+      ready: false
+    };
+    playbackPreparation = saved;
+
+    try {
+      await app.spotify.setShuffle(false, deviceId);
+      await app.spotify.setRepeat('off', deviceId);
+
+      const playlistAlreadyLoaded =
+        initialPlayback?.context?.type === 'playlist' &&
+        initialPlayback.context.uri === playlistUri;
+
+      const playlistItems = await app.spotify.getPlaylistItems(playlistId);
+      const firstPlayableOffset = playlistItems.findIndex(item => item?.uri);
+      assert(firstPlayableOffset >= 0, 'The selected Spotify playlist has no playable items.');
+
+      if (!playlistAlreadyLoaded) {
+        await app.spotify.playPlaylistAt(playlistUri, firstPlayableOffset, deviceId);
+      } else if (!initialPlayback.is_playing) {
+        await app.spotify.resumePlayback(deviceId);
+      }
+
+      await waitFor('the selected playlist to be playing with shuffle and repeat off', async () => {
+        const playback = await app.spotify.getPlaybackState();
+        return playback?.device?.id === deviceId &&
+          playback?.context?.type === 'playlist' &&
+          playback.context.uri === playlistUri &&
+          playback.is_playing &&
+          playback.shuffle_state === false &&
+          playback.repeat_state === 'off'
+          ? playback
+          : null;
+      });
+      saved.ready = true;
+      return saved;
+    } catch (error) {
+      try {
+        await restorePlaybackSettings();
+      } catch (restoreError) {
+        throw new Error(error.message + ' Spotify playback settings could not be restored: ' + restoreError.message);
+      }
+      throw error;
+    }
+  }
+
   async function preflight() {
     assert(app.started, 'Start the controller with communityPlaylist.start() first.');
     assert(app.eventSub?.socket?.readyState === 1, 'Twitch EventSub WebSocket is not connected.');
@@ -49,26 +153,29 @@ export function createLiveE2ESuite(app) {
     const identity = await app.twitchAuth.validate();
     assert(String(identity.user_id) === String(app.broadcasterId), 'Twitch OAuth identity does not match the broadcaster.');
 
-    const playback = await app.spotify.getPlaybackState();
-    assert(playback?.is_playing, 'Start Spotify playback before running the E2E suite.');
-    assert(playback.context?.uri === app.config.playlistUri, 'The configured Spotify playlist must be playing.');
-    const state = app.store.get();
-    assert(state.mode !== 'handoff', 'Resolve the controller handoff state before running E2E tests.');
-    assert(!state.active && state.pending.length === 0 && !state.snapshot, 'The application request queue must be empty before running E2E tests.');
+    await preparePlayback();
+    try {
+      const snapshot = await app.coordinator.captureSnapshot();
+      assert(snapshot.nextOffset < snapshot.playlistLength, 'The playlist must have at least one upcoming track to restore.');
+      const [trackX, trackY] = await Promise.all([
+        app.spotify.resolveTrack(app.config.e2eTrackX),
+        app.spotify.resolveTrack(app.config.e2eTrackY)
+      ]);
+      assert(trackX.uri !== trackY.uri, 'E2E_TRACK_X and E2E_TRACK_Y must resolve to different Spotify tracks.');
+      assert(trackX.uri !== snapshot.currentTrackUri && trackY.uri !== snapshot.currentTrackUri, 'Choose test tracks other than the currently playing playlist track.');
+      assert(trackX.uri !== snapshot.nextTrackUri && trackY.uri !== snapshot.nextTrackUri, 'Choose test tracks other than the playlist track that must be restored.');
 
-    const snapshot = await app.coordinator.captureSnapshot();
-    assert(snapshot.nextOffset < snapshot.playlistLength, 'The playlist must have at least one upcoming track to restore.');
-    const [trackX, trackY] = await Promise.all([
-      app.spotify.resolveTrack(app.config.e2eTrackX),
-      app.spotify.resolveTrack(app.config.e2eTrackY)
-    ]);
-    assert(trackX.uri !== trackY.uri, 'E2E_TRACK_X and E2E_TRACK_Y must resolve to different Spotify tracks.');
-    assert(trackX.uri !== snapshot.currentTrackUri && trackY.uri !== snapshot.currentTrackUri, 'Choose test tracks other than the currently playing playlist track.');
-    assert(trackX.uri !== snapshot.nextTrackUri && trackY.uri !== snapshot.nextTrackUri, 'Choose test tracks other than the playlist track that must be restored.');
-
-    const queue = await app.spotify.getQueue();
-    assert(queue[0]?.uri === snapshot.nextTrackUri, 'Spotify upcoming queue did not match the playlist continuation at E2E preflight.');
-    return { snapshot, trackX, trackY, queue };
+      const queue = await app.spotify.getQueue();
+      assert(queue[0]?.uri === snapshot.nextTrackUri, 'Spotify upcoming queue did not match the playlist continuation at E2E preflight.');
+      return { snapshot, trackX, trackY, queue, playlistUri: app.playlistUri };
+    } catch (error) {
+      try {
+        await restorePlaybackSettings();
+      } catch (restoreError) {
+        throw new Error(error.message + ' Spotify playback settings could not be restored: ' + restoreError.message);
+      }
+      throw error;
+    }
   }
 
   async function injectRedemption(id, input) {
@@ -105,7 +212,7 @@ export function createLiveE2ESuite(app) {
     let completed = false;
     const runId = 'community-playlist-e2e-' + crypto.randomUUID();
     try {
-      const { snapshot, trackX, trackY, queue } = await preflight();
+      const { snapshot, trackX, trackY, queue, playlistUri } = await preflight();
       checks.push({ name: 'Twitch and Spotify authentication', passed: true });
       checks.push({ name: 'Playlist and Connect device preflight', passed: true });
 
@@ -143,7 +250,7 @@ export function createLiveE2ESuite(app) {
           app.spotify.getPlaybackState(),
           Promise.resolve(app.store.get())
         ]);
-        return playback?.context?.uri === app.config.playlistUri &&
+        return playback?.context?.uri === playlistUri &&
           playback?.item?.uri === snapshot.nextTrackUri &&
           current.mode === 'idle' &&
           !current.active &&
@@ -186,6 +293,7 @@ export function createLiveE2ESuite(app) {
           app.coordinator.handoff('The E2E suite stopped before it could verify safe playlist restoration. Requests were preserved for manual recovery.');
         }
       }
+      await restorePlaybackSettings();
     }
   }
 
@@ -343,7 +451,7 @@ export function createLiveE2ESuite(app) {
     let completed = false;
     const runId = 'community-playlist-live-chat-' + crypto.randomUUID();
     try {
-      const { snapshot, trackX, trackY } = await preflight();
+      const { snapshot, trackX, trackY, playlistUri } = await preflight();
       const playlistBefore = (await app.spotify.getPlaylistItems(app.coordinator.playlistId)).map(item => item?.uri || null);
       const firstId = runId + '-redemption-x';
       const secondId = runId + '-redemption-y';
@@ -376,7 +484,7 @@ export function createLiveE2ESuite(app) {
           app.spotify.getPlaybackState(),
           Promise.resolve(app.store.get())
         ]);
-        return playback?.context?.uri === app.config.playlistUri &&
+        return playback?.context?.uri === playlistUri &&
           playback?.item?.uri === snapshot.nextTrackUri &&
           state.mode === 'idle' &&
           !state.active &&
@@ -399,11 +507,14 @@ export function createLiveE2ESuite(app) {
           app.coordinator.handoff('The real chat skip E2E test stopped before playlist restoration could be verified. Requests were preserved for manual recovery.');
         }
       }
+      await restorePlaybackSettings();
     }
   }
 
   return {
     preflight,
+    preparePlayback,
+    restorePlaybackSettings,
     runPlaybackSequence,
     runRealChatSkipTest,
     verifyProviderTokenRefresh,

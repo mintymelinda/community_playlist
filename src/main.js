@@ -10,10 +10,13 @@ import { PlaybackCoordinator } from './playback/coordinator.js';
 const AUTO_START_KEY = 'community-playlist-auto-start';
 
 function validateConfig(config) {
-  for (const key of ['twitchClientId', 'spotifyClientId', 'spotifyRedirectUri', 'playlistUri']) {
+  for (const key of ['twitchClientId', 'spotifyClientId', 'spotifyRedirectUri']) {
     if (!config[key] || String(config[key]).includes('YOUR_')) {
       throw new Error('Set ' + key + ' in config.local.js before starting the controller.');
     }
+  }
+  if (!config.e2eMode && (!config.playlistUri || String(config.playlistUri).includes('YOUR_'))) {
+    throw new Error('Set playlistUri in config.local.js before starting the controller.');
   }
   const redirect = new URL(config.spotifyRedirectUri);
   if (redirect.origin !== location.origin || redirect.pathname !== location.pathname || redirect.search || redirect.hash) {
@@ -55,11 +58,13 @@ class CommunityPlaylistApp {
       pkceStore: spotifyPkceStore
     });
     this.spotify = new SpotifyClient({ auth: this.spotifyAuth });
+    this.playlistUri = String(config.playlistUri || '').trim();
+    this.playlistId = this.playlistUri ? this.spotify.extractPlaylistId(this.playlistUri) : '';
     this.coordinator = new PlaybackCoordinator({
       spotify: this.spotify,
       store: this.store,
-      playlistUri: config.playlistUri,
-      playlistId: this.spotify.extractPlaylistId(config.playlistUri),
+      playlistUri: this.playlistUri,
+      playlistId: this.playlistId,
       deviceId: config.spotifyDeviceId || '',
       pollIntervalMs: Math.max(1000, Number(config.pollIntervalMs) || 2000)
     });
@@ -114,7 +119,7 @@ class CommunityPlaylistApp {
     }
 
     this.started = true;
-    console.info('[community-playlist] Controller is running. Power-up: ' + powerUp.title + '. Playlist: ' + this.config.playlistUri);
+    console.info('[community-playlist] Controller is running. Power-up: ' + powerUp.title + '. Playlist: ' + (this.playlistUri || 'selected from current Spotify playback'));
     return this.status();
   }
 
@@ -157,7 +162,7 @@ class CommunityPlaylistApp {
       running: this.started,
       broadcasterId: this.broadcasterId,
       powerUp: this.powerUp ? { id: this.powerUp.id, title: this.powerUp.title } : null,
-      playlistUri: this.config.playlistUri,
+      playlistUri: this.playlistUri,
       playback: this.coordinator.status()
     };
   }
@@ -188,6 +193,8 @@ async function bootstrap() {
     const suite = createLiveE2ESuite(app);
     globalThis.communityPlaylist.e2e = {
       preflight: () => suite.preflight(),
+      preparePlayback: () => suite.preparePlayback(),
+      cleanup: () => suite.restorePlaybackSettings(),
       runPlaybackSequence: () => suite.runPlaybackSequence(),
       runRealChatSkipTest: timeoutMs => suite.runRealChatSkipTest(timeoutMs),
       verifyProviderTokenRefresh: () => suite.verifyProviderTokenRefresh(),

@@ -44,6 +44,26 @@ export class SpotifyClient {
     return this.api('/me/player');
   }
 
+  resumePlayback(deviceId) {
+    const query = deviceId ? '?device_id=' + encodeURIComponent(deviceId) : '';
+    return this.api('/me/player/play' + query, { method: 'PUT' });
+  }
+
+  setShuffle(enabled, deviceId) {
+    const params = new URLSearchParams({ state: String(Boolean(enabled)) });
+    if (deviceId) params.set('device_id', deviceId);
+    return this.api('/me/player/shuffle?' + params, { method: 'PUT' });
+  }
+
+  setRepeat(mode, deviceId) {
+    if (!['off', 'track', 'context'].includes(mode)) {
+      throw new Error('Spotify repeat mode must be off, track, or context.');
+    }
+    const params = new URLSearchParams({ state: mode });
+    if (deviceId) params.set('device_id', deviceId);
+    return this.api('/me/player/repeat?' + params, { method: 'PUT' });
+  }
+
   getQueue() {
     return this.api('/me/player/queue').then(result => result?.queue || []);
   }
