@@ -193,6 +193,8 @@ async function bootstrap() {
     const suite = createLiveE2ESuite(app);
     globalThis.communityPlaylist.e2e = {
       preflight: () => suite.preflight(),
+      preparePlayback: () => suite.preparePlayback(),
+      cleanup: () => suite.restorePlaybackSettings(),
       runPlaybackSequence: () => suite.runPlaybackSequence(),
       runRealChatSkipTest: timeoutMs => suite.runRealChatSkipTest(timeoutMs),
       verifyProviderTokenRefresh: () => suite.verifyProviderTokenRefresh(),
