@@ -72,7 +72,7 @@ test('Spotify CI PKCE handoff rejects a wrong key, callback state, and expired h
   assert.throws(() => parseSpotifyCallbackUrl(
     'http://127.0.0.1:4173/?code=one-time-code&state=wrong-state',
     payload
-  ), /invalid state/);
+  ), /state does not match/);
   assert.throws(() => parseSpotifyCallbackUrl(
     'http://127.0.0.1:4174/?code=one-time-code&state=' + payload.state,
     payload
