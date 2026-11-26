@@ -25,6 +25,11 @@ export class RedemptionProcessor {
 
   async accept(redemption) {
     if (!redemption?.id) return false;
+    this.logger.info('[community-playlist] Received Twitch redemption.', {
+      redemptionId: redemption.id,
+      requester: redemption.requester || 'Viewer',
+      input: String(redemption.input || '')
+    });
     this.store.recordRedemption(redemption);
     return this.process(redemption.id);
   }
@@ -53,6 +58,9 @@ export class RedemptionProcessor {
 
     try {
       const track = await this.spotify.resolveTrack(input);
+      this.logger.info('[community-playlist] Redemption resolved to track.', {
+        redemptionId: id, uri: track.uri, title: track.name
+      });
       const request = {
         id: job.id,
         uri: track.uri,

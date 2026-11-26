@@ -102,6 +102,54 @@ test('plays viewer requests FIFO ahead of the saved playlist continuation', asyn
   assert.equal(spotify.current.item.uri, tracks[1].uri);
 });
 
+test('serializes a second redemption behind Spotify confirmation of the active request', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  let releaseConfirmation;
+  let playStarted;
+  const started = new Promise(resolve => { playStarted = resolve; });
+  const confirmation = new Promise(resolve => { releaseConfirmation = resolve; });
+  const originalGetPlaybackState = spotify.getPlaybackState.bind(spotify);
+  let waitingForConfirmation = false;
+
+  spotify.playTrack = async (uri, targetDevice) => {
+    spotify.played.push({ uri, targetDevice });
+    spotify.current = {
+      device: { id: targetDevice },
+      context: null,
+      item: tracks.find(track => track.uri === uri),
+      is_playing: true,
+      progress_ms: 0
+    };
+    waitingForConfirmation = true;
+    playStarted();
+  };
+  spotify.getPlaybackState = async () => {
+    if (waitingForConfirmation) return confirmation;
+    return originalGetPlaybackState();
+  };
+
+  const first = coordinator.enqueue(request('request-mozart', tracks[2]));
+  await started;
+  const second = coordinator.enqueue(request('request-sex-machina', tracks[3]));
+
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri]);
+  assert.equal(store.get().active.id, 'request-mozart');
+  assert.deepEqual(store.get().pending, [], 'the second redemption must not mutate the queue during first-track confirmation');
+
+  releaseConfirmation({
+    device: { id: deviceId },
+    context: null,
+    item: tracks[2],
+    is_playing: true,
+    progress_ms: 100
+  });
+  await Promise.all([first, second]);
+
+  assert.equal(store.get().active.id, 'request-mozart');
+  assert.deepEqual(store.get().pending.map(item => item.id), ['request-sex-machina']);
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri]);
+});
+
 test('captures the playlist continuation when the current Spotify URI is not in the playlist response', async () => {
   const { spotify, store, coordinator } = createCoordinator();
   spotify.current.item = { uri: 'spotify:track:spotify-relinked-current', duration_ms: 180000 };
