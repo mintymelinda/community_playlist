@@ -7,7 +7,6 @@ export const OAUTH_VAULT_ARTIFACT_NAME = 'community-playlist-oauth-vault';
 export async function findLatestOAuthVaultArtifact({
   repository,
   token,
-  currentRunId,
   fetchImpl = fetch
 }) {
   if (!repository || !token) {
@@ -33,8 +32,7 @@ export async function findLatestOAuthVaultArtifact({
     .filter(artifact =>
       artifact.name === OAUTH_VAULT_ARTIFACT_NAME &&
       artifact.expired !== true &&
-      artifact.workflow_run?.id &&
-      String(artifact.workflow_run.id) !== String(currentRunId)
+      artifact.workflow_run?.id
     )
     .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
 
@@ -51,7 +49,7 @@ async function main() {
   const outputPath = process.env.GITHUB_OUTPUT;
   if (!outputPath) throw new Error('GITHUB_OUTPUT is unavailable.');
 
-  const artifact = await findLatestOAuthVaultArtifact({ repository, token, currentRunId });
+  const artifact = await findLatestOAuthVaultArtifact({ repository, token });
   const output = artifact
     ? 'found=true\nrun_id=' + artifact.runId + '\n'
     : 'found=false\nrun_id=\n';
