@@ -64,7 +64,7 @@ The controller uses Authorization Code with PKCE and the scopes:
 - \`playlist-read-collaborative\`
 - \`user-modify-playback-state\`
 
-Playback control requires Spotify Premium. Playlist reading uses the current \`GET /playlists/{id}/items\` route; the older \`/tracks\` playlist route is deprecated in the 2026 API changelog. Spotify Search uses a limit of one result, within the current documented maximum of ten.
+Playback control requires Spotify Premium. Playlist reading uses the current \`GET /playlists/{id}/items\` route; its items can be tracks or episodes, and the older \`/tracks\` playlist route is deprecated in the 2026 API changelog. Spotify Search uses a limit of one result, within the current documented maximum of ten.
 
 Sources:
 
@@ -81,7 +81,7 @@ Viewer requests are not appended to Spotify's queue. They are stored locally and
 2. Requires repeat mode to be off; shuffle may remain enabled.
 3. Reads the playlist items and Spotify's upcoming queue.
 4. When shuffle is off, matches the current track and upcoming queue against the sequential playlist continuation. When shuffle is on, maps Spotify's first upcoming track to its unique playlist offset and verifies that the reported queue entries belong to the playlist.
-5. Refuses to take over if there are unavailable entries, duplicate-track ambiguity, missing shuffled queue data, or manual queue entries outside the configured playlist.
+5. Refuses to take over if the current or upcoming item cannot be mapped, duplicate-track ambiguity remains, shuffled queue data is missing, or manual queue entries fall outside the configured playlist. Unavailable/local playlist entries are retained as positional placeholders and skipped only when the upcoming queue confirms the next playable item.
 
 It then starts each request as a single URI, verifies the resulting current track, and watches playback state. When the request queue empties, it restores the saved playlist context at the saved offset, rather than calling Spotify's next endpoint.
 

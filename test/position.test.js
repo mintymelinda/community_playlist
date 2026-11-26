@@ -72,10 +72,28 @@ test('refuses ambiguous duplicate positions', () => {
   }), /ambiguous|continuation/);
 });
 
-test('refuses unavailable playlist items instead of shifting their positions', () => {
-  assert.throws(() => resolveNextPlaylistOffset({
-    playlistTracks: [tracks[0], null, tracks[1]],
+test('skips unavailable playlist placeholders while retaining the original restore offset', () => {
+  assert.deepEqual(resolveNextPlaylistOffset({
+    playlistTracks: [tracks[0], null, tracks[1], tracks[2]],
     currentTrackUri: tracks[0].uri,
-    upcomingTracks: [tracks[1]]
-  }), /unavailable/);
+    upcomingTracks: [tracks[1], tracks[2]]
+  }), { nextOffset: 2, nextTrackUri: tracks[1].uri });
+});
+
+test('supports an episode as the next item in the playlist continuation', () => {
+  const episode = { uri: 'spotify:episode:podcast-1', type: 'episode' };
+  assert.deepEqual(resolveNextPlaylistOffset({
+    playlistTracks: [tracks[0], episode, tracks[1]],
+    currentTrackUri: tracks[0].uri,
+    upcomingTracks: [episode, tracks[1]]
+  }), { nextOffset: 1, nextTrackUri: episode.uri });
+});
+
+test('skips unavailable placeholders when resolving a shuffled playlist continuation', () => {
+  assert.deepEqual(resolveNextPlaylistOffset({
+    playlistTracks: [tracks[0], null, tracks[1], tracks[2], tracks[3]],
+    currentTrackUri: tracks[0].uri,
+    upcomingTracks: [tracks[3], tracks[2], tracks[1]],
+    shuffle: true
+  }), { nextOffset: 4, nextTrackUri: tracks[3].uri });
 });
