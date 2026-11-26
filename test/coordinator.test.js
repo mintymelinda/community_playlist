@@ -102,6 +102,18 @@ test('plays viewer requests FIFO ahead of the saved playlist continuation', asyn
   assert.equal(spotify.current.item.uri, tracks[1].uri);
 });
 
+test('captures the next playable playlist item after unavailable placeholders', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  spotify.getPlaylistItems = async () => [tracks[0], null, tracks[1], tracks[2]];
+  spotify.getQueue = async () => [tracks[1], tracks[2]];
+
+  await coordinator.enqueue(request('after-unavailable', { ...tracks[3], name: 'X' }));
+
+  assert.equal(store.get().snapshot.nextOffset, 2);
+  assert.equal(store.get().snapshot.nextTrackUri, tracks[1].uri);
+  assert.equal(spotify.played[0].uri, tracks[3].uri);
+});
+
 test('preserves the next shuffled playlist track and shuffle setting across requests', async () => {
   const { spotify, store, coordinator } = createCoordinator();
   spotify.current.shuffle_state = true;
