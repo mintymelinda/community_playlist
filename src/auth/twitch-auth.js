@@ -20,8 +20,9 @@ async function postForm(url, values, fetchImpl) {
 }
 
 export class TwitchAuth {
-  constructor({ clientId, scopes, tokenStore, fetchImpl = globalThis.fetch.bind(globalThis), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), onDeviceCode = info => console.info('[community-playlist] Twitch authorization required:', info) }) {
+  constructor({ clientId, clientSecret = '', scopes, tokenStore, fetchImpl = globalThis.fetch.bind(globalThis), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), onDeviceCode = info => console.info('[community-playlist] Twitch authorization required:', info) }) {
     this.clientId = clientId;
+    this.clientSecret = String(clientSecret || '').trim();
     this.scopes = scopes;
     this.tokenStore = tokenStore;
     this.fetch = fetchImpl;
@@ -101,7 +102,8 @@ export class TwitchAuth {
         const token = await postForm(TWITCH_TOKEN_URL, {
           client_id: this.clientId,
           grant_type: 'refresh_token',
-          refresh_token: this.session.refreshToken
+          refresh_token: this.session.refreshToken,
+          ...(this.clientSecret ? { client_secret: this.clientSecret } : {})
         }, this.fetch);
         this.acceptToken(token);
         return this.session.accessToken;
