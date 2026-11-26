@@ -182,6 +182,7 @@ test('Twitch refresh stores the rotated single-use refresh token', async () => {
   let submitted;
   const auth = new TwitchAuth({
     clientId: 'twitch-client',
+    clientSecret: 'twitch-client-secret',
     scopes: ['bits:read'],
     tokenStore,
     fetchImpl: async (url, options) => {
@@ -197,6 +198,7 @@ test('Twitch refresh stores the rotated single-use refresh token', async () => {
 
   assert.equal(await auth.getAccessToken(), 'new-access');
   assert.equal(submitted.get('refresh_token'), 'old-refresh');
+  assert.equal(submitted.get('client_secret'), 'twitch-client-secret');
   assert.equal(tokenStore.load().refreshToken, 'new-refresh');
 });
 
