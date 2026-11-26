@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLiveE2ESuite } from '../src/e2e/live-suite.js';
+import { createLiveE2ESuite, playbackTrackUri } from '../src/e2e/live-suite.js';
 import { MemoryStorage, QueueStore } from '../src/lib/queue-store.js';
 
 const playlistUri = 'spotify:playlist:target-playlist';
@@ -148,4 +148,17 @@ test('preflight requires a configured or currently loaded playlist context', asy
   const { app } = createApp({ configuredPlaylist: '', initialContext: null });
   const suite = createLiveE2ESuite(app);
   await assert.rejects(suite.preflight(), /set SPOTIFY_PLAYLIST_URI or start a Spotify playlist first/i);
+});
+
+test('matches Spotify relinked playback to the originally requested track URI', () => {
+  const playback = {
+    item: {
+      uri: 'spotify:track:playable-replacement',
+      linked_from: { uri: 'spotify:track:original-request' }
+    }
+  };
+
+  assert.equal(playbackTrackUri(playback), 'spotify:track:original-request');
+  assert.equal(playbackTrackUri({ item: { uri: 'spotify:track:ordinary' } }), 'spotify:track:ordinary');
+  assert.equal(playbackTrackUri(null), null);
 });
