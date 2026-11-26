@@ -25,6 +25,27 @@ test('encrypts both providers refresh tokens and restores the vault', () => {
   assert.deepEqual(decryptOAuthVault(encrypted, key), vault);
 });
 
+
+test('supports a provider-only vault so a rotated token survives failure in the other provider', () => {
+  const partial = {
+    version: 1,
+    updatedAt: 999,
+    spotify: {
+      refreshToken: 'rotated-spotify-refresh',
+      scopes: ['user-read-playback-state']
+    },
+    twitch: null
+  };
+  const encrypted = encryptOAuthVault(partial, key);
+  assert.deepEqual(decryptOAuthVault(encrypted, key), partial);
+  assert.throws(() => encryptOAuthVault({
+    version: 1,
+    updatedAt: 999,
+    spotify: null,
+    twitch: null
+  }, key), /at least one provider refresh token/);
+});
+
 test('rejects a vault encrypted with another key', () => {
   const encrypted = encryptOAuthVault(vault, key);
   assert.throws(
