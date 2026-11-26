@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { readWorkflowDispatchInput } from './workflow-input.js';
 import { startE2EServer } from './server.js';
 import { TwitchAuth } from '../../src/auth/twitch-auth.js';
 import { TokenStore } from '../../src/lib/token-store.js';
@@ -49,7 +50,7 @@ class MemoryStorage {
 
 async function obtainSpotifyAccessToken() {
   const key = required('SPOTIFY_PKCE_HANDOFF_KEY');
-  const callbackValue = required('SPOTIFY_CALLBACK_URL');
+  const callbackValue = await readWorkflowDispatchInput('spotify_callback_url');
   console.info('::add-mask::' + callbackValue);
   const envelope = JSON.parse(await readFile('.ci-auth/spotify-pkce-handoff.json', 'utf8'));
   const handoff = decryptSpotifyPkceHandoff(envelope, key);
