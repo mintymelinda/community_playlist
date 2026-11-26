@@ -513,6 +513,8 @@ export function createLiveE2ESuite(app) {
 
   return {
     preflight,
+    preparePlayback,
+    restorePlaybackSettings,
     runPlaybackSequence,
     runRealChatSkipTest,
     verifyProviderTokenRefresh,
