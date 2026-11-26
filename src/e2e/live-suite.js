@@ -112,8 +112,12 @@ export function createLiveE2ESuite(app) {
         initialPlayback?.context?.type === 'playlist' &&
         initialPlayback.context.uri === playlistUri;
 
+      const playlistItems = await app.spotify.getPlaylistItems(playlistId);
+      const firstPlayableOffset = playlistItems.findIndex(item => item?.uri);
+      assert(firstPlayableOffset >= 0, 'The selected Spotify playlist has no playable items.');
+
       if (!playlistAlreadyLoaded) {
-        await app.spotify.playPlaylistAt(playlistUri, 0, deviceId);
+        await app.spotify.playPlaylistAt(playlistUri, firstPlayableOffset, deviceId);
       } else if (!initialPlayback.is_playing) {
         await app.spotify.resumePlayback(deviceId);
       }
@@ -480,7 +484,7 @@ export function createLiveE2ESuite(app) {
           app.spotify.getPlaybackState(),
           Promise.resolve(app.store.get())
         ]);
-        return playback?.context?.uri === app.config.playlistUri &&
+        return playback?.context?.uri === playlistUri &&
           playback?.item?.uri === snapshot.nextTrackUri &&
           state.mode === 'idle' &&
           !state.active &&
