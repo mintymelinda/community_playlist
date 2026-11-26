@@ -12,6 +12,23 @@ test('resolves the next playlist offset from the matching upcoming queue', () =>
   }), { nextOffset: 1, nextTrackUri: 'spotify:track:b' });
 });
 
+test('uses the upcoming queue when Spotify reports a current URI not present in the playlist', () => {
+  assert.deepEqual(resolveNextPlaylistOffset({
+    playlistTracks: tracks,
+    currentTrackUri: 'spotify:track:relinked-current',
+    upcomingTracks: tracks.slice(1)
+  }), { nextOffset: 1, nextTrackUri: 'spotify:track:b' });
+});
+
+test('uses the first upcoming playlist item when shuffle is enabled and current URI differs', () => {
+  assert.deepEqual(resolveNextPlaylistOffset({
+    playlistTracks: tracks,
+    currentTrackUri: 'spotify:track:relinked-current',
+    upcomingTracks: [tracks[2], tracks[3], tracks[1]],
+    shuffle: true
+  }), { nextOffset: 2, nextTrackUri: 'spotify:track:c' });
+});
+
 test('resolves the next playlist offset from Spotify queue order when shuffle is enabled', () => {
   assert.deepEqual(resolveNextPlaylistOffset({
     playlistTracks: tracks,
@@ -53,6 +70,14 @@ test('rejects manual queue entries appended after the first few playlist tracks'
     currentTrackUri: 'spotify:track:a',
     upcomingTracks: [tracks[1], tracks[2], tracks[3], { uri: 'spotify:track:manual' }]
   }), /does not match/);
+});
+
+test('rejects an ambiguous queue match when the current item cannot narrow duplicate positions', () => {
+  assert.throws(() => resolveNextPlaylistOffset({
+    playlistTracks: [tracks[0], tracks[1], tracks[2], tracks[1], tracks[2]],
+    currentTrackUri: 'spotify:track:unknown',
+    upcomingTracks: [tracks[1], tracks[2]]
+  }), /more than one playlist position/);
 });
 
 test('uses the queue to disambiguate repeated tracks', () => {
