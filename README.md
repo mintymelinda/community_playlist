@@ -126,7 +126,7 @@ Add all non-secret configuration as repository **Actions variables**. This inclu
 - `E2E_TRACK_X` and `E2E_TRACK_Y` (different Spotify track IDs, URIs, or URLs)
 - Optional variables: `TWITCH_BROADCASTER_ID`, `TWITCH_POWER_UP_ID`, `SPOTIFY_DEVICE_ID`
 
-For migration compatibility, the workflow also reads the legacy `TWITCH_CLIENT_ID` secret when the same Actions variable is absent; move it to Variables and remove the duplicate Secret when convenient. The long-term repository **Actions secret** needed by this workflow is `SPOTIFY_PKCE_HANDOFF_KEY`, a 32-byte random encryption key. This key encrypts the temporary PKCE verifier while it is passed between the two workflow runs; it is not an OAuth credential. In PowerShell, generate it with:
+For migration compatibility, the workflow also reads the legacy `TWITCH_CLIENT_ID` secret when the same Actions variable is absent; move it to Variables and remove the duplicate Secret when convenient. The long-term repository **Actions secret** needed by this workflow is `SPOTIFY_PKCE_HANDOFF_KEY`, a 32-byte random encryption key. It encrypts both the temporary PKCE verifier and the persistent OAuth refresh-token vault; it is not itself an OAuth credential. In PowerShell, generate it with:
 
 ```powershell
 $bytes = New-Object byte[] 32
@@ -136,19 +136,27 @@ $rng.GetBytes($bytes)
 $rng.Dispose()
 ```
 
-Do not add `TWITCH_ACCESS_TOKEN`, `SPOTIFY_ACCESS_TOKEN`, client secrets, or refresh tokens. CI obtains provider tokens itself and keeps them in the runner/browser memory for that run.
+Do not add `TWITCH_ACCESS_TOKEN`, `SPOTIFY_ACCESS_TOKEN`, client secrets, or refresh tokens. CI obtains short-lived access tokens by refreshing the saved provider credentials. The refresh tokens are stored only in an AES-256-GCM encrypted Actions artifact; plaintext access tokens exist only in the ephemeral runner and browser session.
 
 ### Run the workflow
 
-Open **Actions → Live Twitch and Spotify E2E → Run workflow**:
+**First-time setup or reauthorization**
 
 1. Select stage `authorize_spotify`. CI creates a PKCE verifier and displays a Spotify authorization link in the run summary. Open it and approve the requested scopes.
 2. Spotify redirects to `http://127.0.0.1:4173/`. The page may fail to load; this is expected. **Copy the complete URL from the browser address bar, including the query string with both `code` and `state`.** It must look like `http://127.0.0.1:4173/?code=...&state=...`; keep `127.0.0.1`, port `4173`, and the trailing slash exactly as shown (do not substitute `localhost`), and do not copy only `http://127.0.0.1:4173/`.
 3. Start the workflow again, select stage `run_live_test`, enter the numeric run ID from that exact `authorize_spotify` run in `spotify_auth_run_id`, and paste the complete redirect URL into `spotify_callback_url`. Treat the URL as a one-time credential: do not post it in issues, chats, or screenshots. Do this promptly because Spotify authorization codes are short-lived.
-4. The CI run exchanges the Spotify code using the encrypted PKCE verifier. It then starts Twitch Device Code authorization. Open the Twitch activation URL shown in the Actions log/summary, enter the one-time code, and approve access using the broadcaster account. CI polls Twitch and continues automatically after approval.
-5. Before the playback sequence starts, make the target Spotify Connect device available. The harness loads/starts the configured playlist if needed; with `SPOTIFY_PLAYLIST_URI` blank, it uses the active Spotify playlist context. It saves shuffle/repeat, disables both for the test, and restores their original values afterwards. Playlist contents are never modified.
+4. CI exchanges the Spotify code using the encrypted PKCE verifier. It then starts Twitch Device Code authorization. Open the Twitch activation URL shown in the Actions log/summary, enter the one-time code, and approve access using the broadcaster account.
+5. CI saves both refresh tokens in an encrypted Actions artifact before running the playback tests. The next step is ready to use.
 
-The Spotify PKCE verifier is encrypted with AES-256-GCM in a one-day artifact because workflow artifacts can be downloaded by people with repository read access. The encryption key remains in Actions Secrets. The Spotify callback URL is masked in workflow logs. OAuth access/refresh tokens are not uploaded as artifacts, logged, or saved as Actions secrets.
+**Normal runs after setup**
+
+1. Open **Actions → Live Twitch and Spotify E2E → Run workflow** and leave stage set to `run_live_test` (the default).
+2. Leave `spotify_auth_run_id` and `spotify_callback_url` blank. CI downloads the latest unexpired encrypted OAuth vault, refreshes both access tokens, saves any rotated refresh tokens, and proceeds without opening either provider approval flow.
+3. Before the playback sequence starts, make the target Spotify Connect device available. The harness loads/starts the configured playlist if needed; with `SPOTIFY_PLAYLIST_URI` blank, it uses the active Spotify playlist context. It saves shuffle/repeat, disables both for the test, and restores their original values afterwards. Playlist contents are never modified.
+
+The provider approval steps are needed again only when a refresh token is revoked or invalid, required scopes change, or the encrypted artifact expires/is removed. To reauthorize, repeat the first-time steps. The Twitch Device Code flow starts automatically only when the saved Twitch credential cannot be reused.
+
+The Spotify PKCE verifier is encrypted with AES-256-GCM in a one-day artifact. The persistent OAuth vault is separately encrypted with AES-256-GCM and stored in an Actions artifact using the repository's configured artifact-retention period. Both use the `SPOTIFY_PKCE_HANDOFF_KEY` secret, which never leaves Actions Secrets. The callback URL and provider tokens are masked in workflow logs. The vault contains refresh tokens, scopes, and the Twitch account ID only; short-lived access tokens are not uploaded as artifacts or saved as Actions secrets. The encrypted artifact is readable by repository collaborators, but its contents cannot be used without the encryption key.
 
 The default test performs live preflight, the synthetic-redemption X → Y playback sequence, unauthorized skip rejection, broadcaster skip, playlist restoration, playlist non-mutation checks, and Twitch EventSub reconnect verification. Synthetic redemption notifications do not spend Bits. Selecting `run_real_chat_test` additionally waits for a real ordinary viewer `!skip` and then a broadcaster/moderator `!skip` in Twitch chat. It does not perform a real Custom Power-up redemption.
 
