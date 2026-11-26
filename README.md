@@ -121,10 +121,10 @@ Add all non-secret configuration as repository **Actions variables**. This inclu
 - `TWITCH_CLIENT_ID`
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_PLAYLIST_URI`
-- `E2E_TRACK_X` and `E2E_TRACK_Y` (different Spotify track URIs or URLs)
+- `E2E_TRACK_X` and `E2E_TRACK_Y` (different Spotify track IDs, URIs, or URLs)
 - Optional variables: `TWITCH_BROADCASTER_ID`, `TWITCH_POWER_UP_ID`, `SPOTIFY_DEVICE_ID`
 
-The only repository **Actions secret** needed by this workflow is `SPOTIFY_PKCE_HANDOFF_KEY`, a 32-byte random encryption key. This key encrypts the temporary PKCE verifier while it is passed between the two workflow runs; it is not an OAuth credential. In PowerShell, generate it with:
+For migration compatibility, the workflow also reads the legacy `TWITCH_CLIENT_ID` secret when the same Actions variable is absent; move it to Variables and remove the duplicate Secret when convenient. The long-term repository **Actions secret** needed by this workflow is `SPOTIFY_PKCE_HANDOFF_KEY`, a 32-byte random encryption key. This key encrypts the temporary PKCE verifier while it is passed between the two workflow runs; it is not an OAuth credential. In PowerShell, generate it with:
 
 ```powershell
 $bytes = New-Object byte[] 32
