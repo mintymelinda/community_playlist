@@ -5,7 +5,8 @@ import { TokenStore } from '../../src/lib/token-store.js';
 import {
   decryptSpotifyPkceHandoff,
   parseSpotifyCallbackUrl,
-  SPOTIFY_SCOPES
+  SPOTIFY_SCOPES,
+  validateSpotifyOAuthClientId
 } from './spotify-pkce-handoff.js';
 
 const TWITCH_SCOPES = ['bits:read', 'user:read:chat'];
@@ -55,6 +56,7 @@ async function obtainSpotifyAccessToken() {
   const callback = parseSpotifyCallbackUrl(callbackValue, handoff);
   console.info('::add-mask::' + callback.code);
 
+  const spotifyClientId = validateSpotifyOAuthClientId(required('SPOTIFY_CLIENT_ID'));
   const response = await fetch(SPOTIFY_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -62,7 +64,7 @@ async function obtainSpotifyAccessToken() {
       grant_type: 'authorization_code',
       code: callback.code,
       redirect_uri: handoff.redirectUri,
-      client_id: required('SPOTIFY_CLIENT_ID'),
+      client_id: spotifyClientId,
       code_verifier: handoff.verifier
     })
   });
