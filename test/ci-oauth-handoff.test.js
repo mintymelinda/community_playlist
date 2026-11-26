@@ -60,6 +60,24 @@ test('rejects a Spotify Soloist key where the OAuth Client ID is required', () =
   }), /sensitive Spotify Soloist API key/);
 });
 
+test('recognizes the Spotify authorization link when it is pasted instead of the redirect callback', () => {
+  const { payload } = createSpotifyPkceHandoff({
+    clientId: 'spotify-public-client'
+  });
+  const authorizationUrl = 'https://accounts.spotify.com/authorize?code=must-not-be-logged&state=must-not-be-logged';
+  assert.throws(
+    () => parseSpotifyCallbackUrl(authorizationUrl, payload),
+    error => {
+      assert.match(error.message, /pasted the Spotify authorization link, not the callback URL/);
+      assert.match(error.message, /Open that link in a browser, approve Spotify/);
+      assert.match(error.message, /http:\/\/127\.0\.0\.1:4173\//);
+      assert.match(error.message, /including \?code=\.\.\.&state=\.\.\./);
+      assert.doesNotMatch(error.message, /must-not-be-logged/);
+      return true;
+    }
+  );
+});
+
 test('Spotify CI PKCE handoff rejects a wrong key, callback state, and expired handoff', () => {
   const { payload } = createSpotifyPkceHandoff({
     clientId: 'spotify-public-client',
