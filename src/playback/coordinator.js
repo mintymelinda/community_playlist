@@ -267,7 +267,9 @@ export class PlaybackCoordinator {
     while (Date.now() < deadline) {
       try {
         const state = await this.spotify.getPlaybackState();
-        const observedIsrc = state?.item?.external_ids?.isrc || null;\n        const matchedByIsrc = Boolean(expectedIsrc && observedIsrc && String(expectedIsrc).toUpperCase() === String(observedIsrc).toUpperCase());\n        if (state?.device?.id === deviceId && (trackUri(state) === uri || matchedByIsrc) && state.is_playing === true) {
+        const observedIsrc = state?.item?.external_ids?.isrc || null;
+        const matchedByIsrc = Boolean(expectedIsrc && observedIsrc && String(expectedIsrc).toUpperCase() === String(observedIsrc).toUpperCase());
+        if (state?.device?.id === deviceId && (trackUri(state) === uri || matchedByIsrc) && state.is_playing === true) {
           this.logger.info('[community-playlist] Playback confirmation matched.', {
             controllerInstance: this.instanceId, playAttemptId, requestId,
             expectedUri: uri, observedUri: trackUri(state), deviceId, matchedBy: matchedByIsrc && trackUri(state) !== uri ? 'isrc' : 'uri', expectedIsrc, observedIsrc,
@@ -297,7 +299,8 @@ export class PlaybackCoordinator {
     const diagnostic = 'Expected track ' + uri + ' (ISRC ' + String(expectedIsrc || 'unknown') + ') on device ' + deviceId +
       '; last observed track ' + observedUri + ' (playable URI ' + playableUri +
       ') on device ' + observedDevice +
-      '; observed_isrc=' + String(lastState?.item?.external_ids?.isrc || 'unknown') +\n      '; is_playing=' + String(lastState?.is_playing ?? 'unknown') +
+      '; observed_isrc=' + String(lastState?.item?.external_ids?.isrc || 'unknown') +
+      '; is_playing=' + String(lastState?.is_playing ?? 'unknown') +
       '; progress_ms=' + String(lastState?.progress_ms ?? 'unknown') +
       '; context=' + String(lastState?.context?.uri || 'none') +
       '; item=' + String(lastState?.item?.name || 'unknown') +
