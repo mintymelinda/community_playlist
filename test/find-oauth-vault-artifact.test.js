@@ -19,7 +19,6 @@ test('selects the newest non-expired vault from a previous workflow run', async 
   const result = await findLatestOAuthVaultArtifact({
     repository: 'owner/repo',
     token: 'test-token',
-    currentRunId: '300',
     fetchImpl: fakeFetch({
       artifacts: [
         { id: 1, name: OAUTH_VAULT_ARTIFACT_NAME, expired: true, created_at: '2026-01-03T00:00:00Z', workflow_run: { id: 100 } },
@@ -29,14 +28,13 @@ test('selects the newest non-expired vault from a previous workflow run', async 
       ]
     })
   });
-  assert.deepEqual(result, { runId: '200', artifactId: 2 });
+  assert.deepEqual(result, { runId: '300', artifactId: 3 });
 });
 
 test('returns null when no unexpired saved vault exists', async () => {
   const result = await findLatestOAuthVaultArtifact({
     repository: 'owner/repo',
     token: 'test-token',
-    currentRunId: '300',
     fetchImpl: fakeFetch({ artifacts: [] })
   });
   assert.equal(result, null);
