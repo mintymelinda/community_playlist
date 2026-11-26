@@ -53,7 +53,7 @@ In the first workflow run, select stage `authorize_spotify`, open the authorizat
 
 The default run verifies live preflight, real Spotify X → Y playback and restore, unauthorized skip rejection, broadcaster skip, no playlist mutation, and Twitch EventSub reconnection. Its redemption notifications are synthetic and spend no Bits. The optional `run_real_chat_test` waits for actual viewer and broadcaster/moderator `!skip` messages. It does not redeem a real Custom Power-up.
 
-The Spotify Connect device must be online and playing the configured playlist, with repeat off and an upcoming playlist track. Shuffle may be enabled. X and Y must be distinct from one another, the current track, and the next playlist track. A failure after playback takeover may require manual playlist recovery. GitHub Actions concurrency prevents overlapping live test runs.
+The Spotify Connect device must be online and playing the configured playlist, with repeat off and an upcoming playlist track. Shuffle may be enabled. X and Y must be distinct from one another, the current track, and the exact next item shown in Spotify's upcoming queue. A failure after playback takeover may require manual playlist recovery. GitHub Actions concurrency prevents overlapping live test runs.
 
 ## Spotify
 
