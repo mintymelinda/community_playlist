@@ -36,11 +36,16 @@ function validateVault(vault) {
   if (!vault || typeof vault !== 'object' || vault.version !== 1) {
     throw new Error('Encrypted OAuth vault payload is missing or has an unsupported version.');
   }
+  const spotify = vault.spotify ? validateCredential(vault.spotify, 'Spotify') : null;
+  const twitch = vault.twitch ? validateCredential(vault.twitch, 'Twitch') : null;
+  if (!spotify && !twitch) {
+    throw new Error('OAuth vault must contain at least one provider refresh token.');
+  }
   return {
     version: 1,
     updatedAt: Number.isFinite(vault.updatedAt) ? vault.updatedAt : Date.now(),
-    spotify: validateCredential(vault.spotify, 'Spotify'),
-    twitch: validateCredential(vault.twitch, 'Twitch')
+    spotify,
+    twitch
   };
 }
 
