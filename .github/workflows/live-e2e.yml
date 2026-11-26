@@ -129,6 +129,7 @@ jobs:
           name: community-playlist-oauth-vault
           path: .ci-auth/community-playlist-oauth-vault.json
           if-no-files-found: error
+          overwrite: true
 
       - name: Run live Twitch and Spotify E2E
         run: node scripts/e2e/ci-runner.js
