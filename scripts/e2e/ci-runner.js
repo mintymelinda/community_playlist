@@ -81,7 +81,6 @@ async function main() {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     await context.addInitScript(({ twitch, spotify }) => {
-      const now = Date.now();
       localStorage.removeItem('community-playlist-e2e-queue-v1');
       sessionStorage.removeItem('community-playlist-e2e-initialized');
       sessionStorage.setItem('community-playlist-e2e-twitch-token', JSON.stringify({
@@ -96,7 +95,6 @@ async function main() {
         expiresAt: spotify.expiresAt,
         scopes: spotify.scopes
       }));
-      void now;
     }, { twitch: auth.twitch, spotify: auth.spotify });
 
     const page = await context.newPage();
