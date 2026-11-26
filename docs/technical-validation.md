@@ -126,3 +126,6 @@ Source: [Spotify Start/Resume Playback policy notes](https://developer.spotify.c
 - [ ] Real broadcaster Custom Power-up payload verified against a live channel.
 - [ ] Real Spotify Premium interruption/restoration sequence verified on the target Connect device.
 - [ ] Background-tab and browser-reload timing tested on the intended browser.
+
+
+The Spotify Web API does not expose a queue-clear operation. The E2E harness clears only its isolated application request store; it does not mutate playlist contents or remove manually queued Spotify items. Preflight refuses to proceed if the upcoming Spotify queue cannot be matched safely to the selected playlist.
