@@ -129,3 +129,8 @@ Source: [Spotify Start/Resume Playback policy notes](https://developer.spotify.c
 
 
 The Spotify Web API does not expose a queue-clear operation. The E2E harness clears only its isolated application request store; it does not mutate playlist contents or remove manually queued Spotify items. Preflight refuses to proceed if the upcoming Spotify queue cannot be matched safely to the selected playlist.
+
+
+### Playback confirmation
+
+Spotify's play endpoint can accept a command before the current-playback endpoint reflects the new item. The coordinator therefore polls for up to 20 seconds (at 400 ms intervals by default), requiring the exact requested track URI on the target Connect device. Transient player-state API errors are retried within that bounded confirmation window. A timeout reports the last observed track and device for diagnosis; it does not assume playback succeeded.
