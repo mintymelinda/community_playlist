@@ -105,5 +105,4 @@ jobs:
       - name: Run live Twitch and Spotify E2E
         env:
           SPOTIFY_PKCE_HANDOFF_KEY: ${{ secrets.SPOTIFY_PKCE_HANDOFF_KEY }}
-          SPOTIFY_CALLBACK_URL: ${{ inputs.spotify_callback_url }}
         run: node scripts/e2e/ci-runner.js
