@@ -8,6 +8,18 @@ function trackUri(state) {
   return state?.item?.linked_from?.uri || state?.item?.uri || null;
 }
 
+function trackMatchesRequest(state, request) {
+  if (!state?.item || !request) return false;
+  if (trackUri(state) === request.uri) return true;
+
+  // Some Spotify playback responses omit linked_from even when the player
+  // reports a relinked playable URI. ISRC is the recording-level identity;
+  // never infer equivalence from title/artist text alone.
+  const expectedIsrc = String(request.isrc || '').trim().toUpperCase();
+  const observedIsrc = String(state.item.external_ids?.isrc || '').trim().toUpperCase();
+  return Boolean(expectedIsrc && observedIsrc && expectedIsrc === observedIsrc);
+}
+
 export class PlaybackCoordinator {
   constructor({
     spotify,
@@ -107,7 +119,7 @@ export class PlaybackCoordinator {
       const state = this.store.get();
       if (!state.active) return false;
       const current = await this.spotify.getPlaybackState();
-      if (!current || current.device?.id !== state.snapshot?.deviceId || trackUri(current) !== state.active.uri) {
+      if (!current || current.device?.id !== state.snapshot?.deviceId || !trackMatchesRequest(current, state.active)) {
         this.handoff('Playback changed before the skip command could be applied.');
         return false;
       }
@@ -222,7 +234,7 @@ export class PlaybackCoordinator {
       this.logger.info('[community-playlist] Spotify accepted play command; beginning playback confirmation.', {
         controllerInstance: this.instanceId, playAttemptId, requestId: request.id
       });
-      const confirmed = await this.waitForTrack(request.uri, snapshot.deviceId, { requestId: request.id, playAttemptId });
+      const confirmed = await this.waitForTrack(request.uri, snapshot.deviceId, { requestId: request.id, playAttemptId, expectedIsrc: request.isrc });
       if (!confirmed) throw new Error('Spotify accepted the play command but the requested track was not confirmed.');
       this.store.update(next => {
         if (next.active?.id === request.id) {
@@ -244,7 +256,7 @@ export class PlaybackCoordinator {
   }
 
   async waitForTrack(uri, deviceId, context = {}) {
-    const { requestId = null, playAttemptId = null } = context;
+    const { requestId = null, playAttemptId = null, expectedIsrc = null } = context;
     this.logger.info('[community-playlist] Playback confirmation started.', {
       controllerInstance: this.instanceId, playAttemptId, requestId, expectedUri: uri, deviceId
     });
@@ -255,10 +267,10 @@ export class PlaybackCoordinator {
     while (Date.now() < deadline) {
       try {
         const state = await this.spotify.getPlaybackState();
-        if (state?.device?.id === deviceId && trackUri(state) === uri && state.is_playing === true) {
+        const observedIsrc = state?.item?.external_ids?.isrc || null;\n        const matchedByIsrc = Boolean(expectedIsrc && observedIsrc && String(expectedIsrc).toUpperCase() === String(observedIsrc).toUpperCase());\n        if (state?.device?.id === deviceId && (trackUri(state) === uri || matchedByIsrc) && state.is_playing === true) {
           this.logger.info('[community-playlist] Playback confirmation matched.', {
             controllerInstance: this.instanceId, playAttemptId, requestId,
-            expectedUri: uri, observedUri: trackUri(state), deviceId,
+            expectedUri: uri, observedUri: trackUri(state), deviceId, matchedBy: matchedByIsrc && trackUri(state) !== uri ? 'isrc' : 'uri', expectedIsrc, observedIsrc,
             progressMs: state.progress_ms ?? null
           });
           return state;
@@ -282,10 +294,10 @@ export class PlaybackCoordinator {
     const observedUri = trackUri(lastState) || 'none';
     const playableUri = lastState?.item?.uri || 'none';
     const observedDevice = lastState?.device?.id || 'none';
-    const diagnostic = 'Expected track ' + uri + ' on device ' + deviceId +
+    const diagnostic = 'Expected track ' + uri + ' (ISRC ' + String(expectedIsrc || 'unknown') + ') on device ' + deviceId +
       '; last observed track ' + observedUri + ' (playable URI ' + playableUri +
       ') on device ' + observedDevice +
-      '; is_playing=' + String(lastState?.is_playing ?? 'unknown') +
+      '; observed_isrc=' + String(lastState?.item?.external_ids?.isrc || 'unknown') +\n      '; is_playing=' + String(lastState?.is_playing ?? 'unknown') +
       '; progress_ms=' + String(lastState?.progress_ms ?? 'unknown') +
       '; context=' + String(lastState?.context?.uri || 'none') +
       '; item=' + String(lastState?.item?.name || 'unknown') +
@@ -343,7 +355,7 @@ export class PlaybackCoordinator {
       return;
     }
 
-    if (currentUri === active.uri) {
+    if (trackMatchesRequest(playback, active)) {
       const progress = Number(playback.progress_ms) || 0;
       const duration = Number(playback.item?.duration_ms) || active.durationMs || 0;
       this.store.update(next => {
@@ -452,7 +464,7 @@ export class PlaybackCoordinator {
     }
 
     const playback = await this.spotify.getPlaybackState();
-    if (playback?.device?.id === state.snapshot.deviceId && trackUri(playback) === state.active.uri) {
+    if (playback?.device?.id === state.snapshot.deviceId && trackMatchesRequest(playback, state.active)) {
       this.store.update(next => {
         next.active.lastProgressMs = Number(playback.progress_ms) || 0;
         next.active.durationMs = Number(playback.item?.duration_ms) || next.active.durationMs || 0;
