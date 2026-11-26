@@ -1,4 +1,6 @@
 import { appendFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export const OAUTH_VAULT_ARTIFACT_NAME = 'community-playlist-oauth-vault';
 
@@ -59,7 +61,7 @@ async function main() {
     : '[community-playlist:ci] No saved OAuth vault found; one-time provider authorization is required.');
 }
 
-if (process.argv[1] && import.meta.url === new URL('file://' + process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main().catch(error => {
     console.error('[community-playlist:ci] Could not locate OAuth vault: ' + error.message);
     process.exitCode = 1;
