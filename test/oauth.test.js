@@ -103,6 +103,51 @@ test('TwitchAuth binds the browser default fetch receiver when validating a toke
   }
 });
 
+test('Twitch Helix API serializes object request bodies as JSON', async () => {
+  const tokenStore = new TokenStore(new MemoryStorage(), 'twitch-helix-json');
+  tokenStore.save({
+    accessToken: 'access',
+    refreshToken: 'refresh',
+    expiresAt: Date.now() + 60_000,
+    scopes: ['bits:read', 'user:read:chat']
+  });
+
+  const subscription = {
+    type: 'channel.custom_power_up_redemption.add',
+    version: '1',
+    condition: {
+      broadcaster_user_id: 'broadcaster-1',
+      reward_id: 'power-up-1'
+    },
+    transport: {
+      method: 'websocket',
+      session_id: 'eventsub-session-1'
+    }
+  };
+  let request;
+  const auth = new TwitchAuth({
+    clientId: 'twitch-client',
+    scopes: ['bits:read', 'user:read:chat'],
+    tokenStore,
+    fetchImpl: async (url, options) => {
+      request = { url, options };
+      return jsonResponse({ data: [] });
+    }
+  });
+
+  await auth.api('/eventsub/subscriptions', {
+    method: 'POST',
+    body: subscription
+  });
+
+  assert.equal(request.url, 'https://api.twitch.tv/helix/eventsub/subscriptions');
+  assert.equal(request.options.headers['Content-Type'], 'application/json');
+  assert.equal(request.options.headers['Client-Id'], 'twitch-client');
+  assert.equal(request.options.headers.Authorization, 'Bearer access');
+  assert.equal(typeof request.options.body, 'string');
+  assert.deepEqual(JSON.parse(request.options.body), subscription);
+});
+
 test('Twitch refresh stores the rotated single-use refresh token', async () => {
   const tokenStore = new TokenStore(new MemoryStorage(), 'twitch');
   tokenStore.save({
