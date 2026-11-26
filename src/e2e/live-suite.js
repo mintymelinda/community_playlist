@@ -105,8 +105,8 @@ export function createLiveE2ESuite(app) {
     playbackPreparation = saved;
 
     try {
-      if (saved.shuffle) await app.spotify.setShuffle(false, deviceId);
-      if (saved.repeat !== 'off') await app.spotify.setRepeat('off', deviceId);
+      await app.spotify.setShuffle(false, deviceId);
+      await app.spotify.setRepeat('off', deviceId);
 
       const playlistAlreadyLoaded =
         initialPlayback?.context?.type === 'playlist' &&
