@@ -1,128 +1,33 @@
 import { readFile } from 'node:fs/promises';
-import { readWorkflowDispatchInput } from './workflow-input.js';
 import { startE2EServer } from './server.js';
-import { TwitchAuth } from '../../src/auth/twitch-auth.js';
-import { TokenStore } from '../../src/lib/token-store.js';
-import {
-  decryptSpotifyPkceHandoff,
-  parseSpotifyCallbackUrl,
-  SPOTIFY_SCOPES,
-  validateSpotifyOAuthClientId
-} from './spotify-pkce-handoff.js';
 
-const TWITCH_SCOPES = ['bits:read', 'user:read:chat'];
-const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
-
-function required(name) {
-  const value = String(process.env[name] || '').trim();
-  if (!value) throw new Error('Missing required GitHub Actions variable or secret: ' + name);
-  return value;
-}
-
-function optional(name) {
-  return String(process.env[name] || '').trim();
-}
-
-async function appendSummary(markdown) {
-  if (process.env.GITHUB_STEP_SUMMARY) {
-    const { appendFile } = await import('node:fs/promises');
-    await appendFile(process.env.GITHUB_STEP_SUMMARY, markdown);
-  }
-}
-
-class MemoryStorage {
-  constructor() {
-    this.values = new Map();
-  }
-
-  getItem(key) {
-    return this.values.has(key) ? this.values.get(key) : null;
-  }
-
-  setItem(key, value) {
-    this.values.set(key, String(value));
-  }
-
-  removeItem(key) {
-    this.values.delete(key);
-  }
-}
-
-async function obtainSpotifyAccessToken() {
-  const key = required('SPOTIFY_PKCE_HANDOFF_KEY');
-  const callbackValue = await readWorkflowDispatchInput('spotify_callback_url');
-  console.info('::add-mask::' + callbackValue);
-  const envelope = JSON.parse(await readFile('.ci-auth/spotify-pkce-handoff.json', 'utf8'));
-  const handoff = decryptSpotifyPkceHandoff(envelope, key);
-  const callback = parseSpotifyCallbackUrl(callbackValue, handoff);
-  console.info('::add-mask::' + callback.code);
-
-  const spotifyClientId = validateSpotifyOAuthClientId(required('SPOTIFY_CLIENT_ID'));
-  const response = await fetch(SPOTIFY_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code: callback.code,
-      redirect_uri: handoff.redirectUri,
-      client_id: spotifyClientId,
-      code_verifier: handoff.verifier
-    })
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error('Spotify OAuth token exchange failed (HTTP ' + response.status + '): ' + (body.error_description || body.error || 'unknown error'));
-  }
-  if (!body.access_token) throw new Error('Spotify OAuth did not return an access token.');
-
-  const scopes = String(body.scope || '').split(' ').filter(Boolean);
-  const missingScopes = SPOTIFY_SCOPES.filter(scope => !scopes.includes(scope));
-  if (missingScopes.length) {
-    throw new Error('Spotify authorization is missing required scopes: ' + missingScopes.join(', ') + '. Start a new Spotify authorization stage and approve all permissions.');
-  }
-
-  console.info('[community-playlist:ci] Spotify PKCE authorization and token exchange: PASS.');
-  return {
-    accessToken: body.access_token,
-    expiresIn: Number(body.expires_in) || 3600,
-    scopes
-  };
-}
-
-async function authorizeTwitchDeviceCode() {
-  const twitchAuth = new TwitchAuth({
-    clientId: required('TWITCH_CLIENT_ID'),
-    scopes: TWITCH_SCOPES,
-    tokenStore: new TokenStore(new MemoryStorage(), 'community-playlist-ci-twitch-token'),
-    onDeviceCode: info => {
-      const prompt = [
-        '## Twitch broadcaster approval required',
-        '',
-        '1. Open [' + info.verificationUri + '](' + info.verificationUri + ').',
-        '2. Enter this one-time code: **' + info.userCode + '**.',
-        '3. Approve the requested permissions using the broadcaster account configured for this channel.',
-        '',
-        'The workflow is waiting for approval and will continue automatically.',
-        ''
-      ].join('\n');
-      appendSummary(prompt).catch(() => {});
-      console.info('[community-playlist:ci] Twitch approval required. Open ' + info.verificationUri + ' and enter code ' + info.userCode + '.');
+function validateSession(session) {
+  for (const provider of ['spotify', 'twitch']) {
+    const token = session?.[provider];
+    if (
+      !token ||
+      typeof token.accessToken !== 'string' ||
+      !token.accessToken ||
+      typeof token.refreshToken !== 'string' ||
+      !token.refreshToken ||
+      !Number.isFinite(token.expiresAt) ||
+      !Array.isArray(token.scopes)
+    ) {
+      throw new Error('Prepared ' + provider + ' OAuth session is missing required token data. Run the OAuth preparation step before the live test.');
     }
-  });
-
-  await twitchAuth.authorize();
-  const expectedBroadcaster = optional('TWITCH_BROADCASTER_ID');
-  if (expectedBroadcaster && String(twitchAuth.identity?.user_id) !== expectedBroadcaster) {
-    throw new Error('The Twitch account that approved Device Code authorization does not match TWITCH_BROADCASTER_ID.');
   }
+  return session;
+}
 
-  console.info('[community-playlist:ci] Twitch Device Code authorization and broadcaster validation: PASS.');
-  return {
-    accessToken: twitchAuth.session.accessToken,
-    expiresIn: Math.max(60, (twitchAuth.session.expiresAt - Date.now()) / 1000),
-    scopes: twitchAuth.identity.scopes || TWITCH_SCOPES,
-    userId: twitchAuth.identity.user_id
-  };
+async function readOAuthSession() {
+  try {
+    return validateSession(JSON.parse(await readFile('.ci-auth/oauth-session.json', 'utf8')));
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error('Prepared OAuth session is missing. Run scripts/e2e/prepare-oauth.js before the live test.');
+    }
+    throw error;
+  }
 }
 
 function reportResult(name, result) {
@@ -147,22 +52,21 @@ async function closeServer(server) {
 }
 
 async function main() {
-  const spotifyToken = await obtainSpotifyAccessToken();
-  const twitchToken = await authorizeTwitchDeviceCode();
+  const auth = await readOAuthSession();
   const port = 4173;
   const env = {
     ...process.env,
     PORT: String(port),
     SPOTIFY_REDIRECT_URI: 'http://127.0.0.1:' + port + '/',
-    TWITCH_CLIENT_ID: required('TWITCH_CLIENT_ID'),
-    SPOTIFY_CLIENT_ID: required('SPOTIFY_CLIENT_ID'),
-    SPOTIFY_PLAYLIST_URI: optional('SPOTIFY_PLAYLIST_URI'),
-    E2E_TRACK_X: required('E2E_TRACK_X'),
-    E2E_TRACK_Y: required('E2E_TRACK_Y'),
-    TWITCH_BROADCASTER_ID: optional('TWITCH_BROADCASTER_ID'),
-    TWITCH_POWER_UP_ID: optional('TWITCH_POWER_UP_ID'),
-    SPOTIFY_DEVICE_ID: optional('SPOTIFY_DEVICE_ID'),
-    POLL_INTERVAL_MS: optional('POLL_INTERVAL_MS') || '2000'
+    TWITCH_CLIENT_ID: String(process.env.TWITCH_CLIENT_ID || '').trim(),
+    SPOTIFY_CLIENT_ID: String(process.env.SPOTIFY_CLIENT_ID || '').trim(),
+    SPOTIFY_PLAYLIST_URI: String(process.env.SPOTIFY_PLAYLIST_URI || '').trim(),
+    E2E_TRACK_X: String(process.env.E2E_TRACK_X || '').trim(),
+    E2E_TRACK_Y: String(process.env.E2E_TRACK_Y || '').trim(),
+    TWITCH_BROADCASTER_ID: String(process.env.TWITCH_BROADCASTER_ID || '').trim(),
+    TWITCH_POWER_UP_ID: String(process.env.TWITCH_POWER_UP_ID || '').trim(),
+    SPOTIFY_DEVICE_ID: String(process.env.SPOTIFY_DEVICE_ID || '').trim(),
+    POLL_INTERVAL_MS: String(process.env.POLL_INTERVAL_MS || '2000')
   };
 
   let server;
@@ -177,22 +81,21 @@ async function main() {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     await context.addInitScript(({ twitch, spotify }) => {
-      const now = Date.now();
       localStorage.removeItem('community-playlist-e2e-queue-v1');
       sessionStorage.removeItem('community-playlist-e2e-initialized');
       sessionStorage.setItem('community-playlist-e2e-twitch-token', JSON.stringify({
         accessToken: twitch.accessToken,
-        refreshToken: null,
-        expiresAt: now + twitch.expiresIn * 1000,
+        refreshToken: twitch.refreshToken,
+        expiresAt: twitch.expiresAt,
         scopes: twitch.scopes
       }));
       sessionStorage.setItem('community-playlist-e2e-spotify-token', JSON.stringify({
         accessToken: spotify.accessToken,
-        refreshToken: null,
-        expiresAt: now + spotify.expiresIn * 1000,
+        refreshToken: spotify.refreshToken,
+        expiresAt: spotify.expiresAt,
         scopes: spotify.scopes
       }));
-    }, { twitch: twitchToken, spotify: spotifyToken });
+    }, { twitch: auth.twitch, spotify: auth.spotify });
 
     const page = await context.newPage();
     page.setDefaultTimeout(120000);
