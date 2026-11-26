@@ -2,7 +2,10 @@ import { SerialExecutor } from '../lib/serial.js';
 import { resolveNextPlaylistOffset } from './position.js';
 
 function trackUri(state) {
-  return state?.item?.uri || null;
+  // Spotify can play a market-available replacement for the requested track.
+  // In that case item.uri is the playable replacement and linked_from.uri is
+  // the original URI supplied by the request/playlist.
+  return state?.item?.linked_from?.uri || state?.item?.uri || null;
 }
 
 export class PlaybackCoordinator {
@@ -215,9 +218,11 @@ export class PlaybackCoordinator {
     }
 
     const observedUri = trackUri(lastState) || 'none';
+    const playableUri = lastState?.item?.uri || 'none';
     const observedDevice = lastState?.device?.id || 'none';
     const diagnostic = 'Expected track ' + uri + ' on device ' + deviceId +
-      '; last observed track ' + observedUri + ' on device ' + observedDevice + '.' +
+      '; last observed track ' + observedUri + ' (playable URI ' + playableUri +
+      ') on device ' + observedDevice + '.' +
       (lastError ? ' Last playback-state API error: ' + lastError.message : '');
     this.logger.warn('[community-playlist] Spotify playback confirmation timed out. ' + diagnostic);
     return null;
