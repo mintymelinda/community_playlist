@@ -59,7 +59,7 @@ export class RedemptionProcessor {
     try {
       const track = await this.spotify.resolveTrack(input);
       this.logger.info('[community-playlist] Redemption resolved to track.', {
-        redemptionId: id, uri: track.uri, title: track.name
+        redemptionId: id, uri: track.uri, title: track.name, isrc: track.isrc || null
       });
       const request = {
         id: job.id,
@@ -67,6 +67,7 @@ export class RedemptionProcessor {
         title: track.name,
         artists: track.artists,
         durationMs: track.durationMs,
+        isrc: track.isrc || null,
         requester: job.requester,
         requesterId: job.requesterId,
         queuedAt: Date.now()

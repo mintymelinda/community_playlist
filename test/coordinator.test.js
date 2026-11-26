@@ -78,6 +78,7 @@ const request = (id, track, requester = 'viewer') => ({
   title: track.name,
   artists: ['Artist'],
   durationMs: track.duration_ms,
+  isrc: track.isrc || null,
   requester,
   queuedAt: Date.now()
 });
@@ -344,6 +345,31 @@ test('confirms Spotify-relinked playback using the original linked_from URI', as
 
   assert.equal(confirmed.item.uri, tracks[3].uri);
   assert.equal(confirmed.item.linked_from.uri, requestedUri);
+});
+
+test('confirms a relinked Spotify playback URI using matching ISRC when linked_from is absent', async () => {
+  const { coordinator } = createCoordinator();
+  const requestedIsrc = 'USRC17607839';
+  const requestedUri = 'spotify:track:requested-track-id';
+  const playableUri = 'spotify:track:market-playable-track-id';
+  coordinator.spotify.getPlaybackState = async () => ({
+    device: { id: deviceId },
+    context: null,
+    item: {
+      uri: playableUri,
+      name: 'SEX MACHINA',
+      external_ids: { isrc: requestedIsrc }
+    },
+    is_playing: true,
+    progress_ms: 250
+  });
+
+  const confirmed = await coordinator.waitForTrack(requestedUri, deviceId, {
+    expectedIsrc: requestedIsrc
+  });
+
+  assert.equal(confirmed.item.uri, playableUri);
+  assert.equal(confirmed.item.external_ids.isrc, requestedIsrc);
 });
 
 test('keeps waiting through transient playback-state API errors', async () => {

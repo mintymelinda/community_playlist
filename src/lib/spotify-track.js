@@ -56,7 +56,8 @@ export function normalizeSpotifyTrack(item) {
     uri: item.uri,
     name: item.name || 'Unknown track',
     artists: Array.isArray(item.artists) ? item.artists.map(artist => artist.name).filter(Boolean) : [],
-    durationMs: Number(item.duration_ms) || 0
+    durationMs: Number(item.duration_ms) || 0,
+    isrc: item.external_ids?.isrc || null
   };
 }
 
