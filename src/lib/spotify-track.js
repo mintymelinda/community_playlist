@@ -61,6 +61,23 @@ export function normalizeSpotifyTrack(item) {
 }
 
 export function normalizePlaylistItem(entry) {
-  const item = entry?.item || entry?.track || entry;
+  const item = entry?.item ?? entry?.track ?? entry;
+  if (!item || typeof item !== 'object' || !item.uri || item.is_playable === false ||
+      entry?.is_local === true || item.is_local === true) {
+    return null;
+  }
+
+  if (item.type === 'episode') {
+    return {
+      id: item.id || null,
+      uri: item.uri,
+      type: 'episode',
+      name: item.name || 'Unknown episode',
+      artists: [],
+      durationMs: Number(item.duration_ms) || 0
+    };
+  }
+
+  if (item.type && item.type !== 'track') return null;
   return normalizeSpotifyTrack(item);
 }
