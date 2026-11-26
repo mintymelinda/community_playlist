@@ -116,15 +116,15 @@ Register this exact Spotify redirect URI in the Spotify developer dashboard:
 
 `http://127.0.0.1:4173/`
 
-Add these repository **Actions variables**. In particular, `SPOTIFY_CLIENT_ID` must be a variable, not a secret: it is embedded in the Spotify authorization URL and GitHub masks secrets in job summaries, which breaks the link. Remove any duplicate `SPOTIFY_CLIENT_ID` repository secret:
+Add all non-secret configuration as repository **Actions variables**. This includes the Spotify track URIs: they identify public catalogue tracks and are passed into the browser test config, so storing them as secrets provides no protection. `SPOTIFY_CLIENT_ID` must also be a variable, not a secret, because GitHub masks secrets in the Spotify authorization link. Remove duplicate configuration entries from Actions Secrets:
 
 - `TWITCH_CLIENT_ID`
 - `SPOTIFY_CLIENT_ID`
 - `SPOTIFY_PLAYLIST_URI`
 - `E2E_TRACK_X` and `E2E_TRACK_Y` (different Spotify track URIs or URLs)
-- Optional: `TWITCH_BROADCASTER_ID`, `TWITCH_POWER_UP_ID`, `SPOTIFY_DEVICE_ID`
+- Optional variables: `TWITCH_BROADCASTER_ID`, `TWITCH_POWER_UP_ID`, `SPOTIFY_DEVICE_ID`
 
-Create one 32-byte random encryption key and add it as the repository **Actions secret** `SPOTIFY_PKCE_HANDOFF_KEY`. This key encrypts the temporary PKCE verifier while it is passed between the two workflow runs; it is not an OAuth credential. In PowerShell, generate it with:
+The only repository **Actions secret** needed by this workflow is `SPOTIFY_PKCE_HANDOFF_KEY`, a 32-byte random encryption key. This key encrypts the temporary PKCE verifier while it is passed between the two workflow runs; it is not an OAuth credential. In PowerShell, generate it with:
 
 ```powershell
 $bytes = New-Object byte[] 32
