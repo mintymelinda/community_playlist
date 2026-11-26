@@ -357,19 +357,24 @@ test('confirms a relinked Spotify playback URI using matching ISRC when linked_f
     context: null,
     item: {
       uri: playableUri,
-      name: 'SEX MACHINA',
-      external_ids: { isrc: requestedIsrc }
+      name: 'SEX MACHINA'
     },
     is_playing: true,
     progress_ms: 250
   });
+  let metadataLookups = 0;
+  coordinator.spotify.getTrack = async uri => {
+    metadataLookups += 1;
+    assert.equal(uri, playableUri);
+    return { uri: playableUri, isrc: requestedIsrc };
+  };
 
   const confirmed = await coordinator.waitForTrack(requestedUri, deviceId, {
     expectedIsrc: requestedIsrc
   });
 
   assert.equal(confirmed.item.uri, playableUri);
-  assert.equal(confirmed.item.external_ids.isrc, requestedIsrc);
+  assert.equal(metadataLookups, 1, 'playable track metadata should be resolved once and cached');
 });
 
 test('keeps waiting through transient playback-state API errors', async () => {

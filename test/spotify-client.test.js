@@ -51,3 +51,29 @@ test('SpotifyClient rejects unsupported repeat modes before making a request', a
   assert.throws(() => client.setRepeat('all'), /repeat mode must be off, track, or context/);
   assert.equal(called, false);
 });
+
+
+test('SpotifyClient resolves a playable track URI to its recording ISRC', async () => {
+  let requestedUrl;
+  const client = new SpotifyClient({
+    auth: { getAccessToken: async () => 'access' },
+    fetchImpl: async url => {
+      requestedUrl = url;
+      return Response.json({
+        id: '4EISOJDYezvr8UtIeOy3sj',
+        uri: 'spotify:track:4EISOJDYezvr8UtIeOy3sj',
+        type: 'track',
+        name: 'SEX MACHINA',
+        artists: [{ name: 'Artist' }],
+        duration_ms: 180000,
+        external_ids: { isrc: 'QZVFR2301719' }
+      });
+    }
+  });
+
+  const track = await client.getTrack('spotify:track:4EISOJDYezvr8UtIeOy3sj');
+
+  assert.equal(requestedUrl, 'https://api.spotify.com/v1/tracks/4EISOJDYezvr8UtIeOy3sj');
+  assert.equal(track.uri, 'spotify:track:4EISOJDYezvr8UtIeOy3sj');
+  assert.equal(track.isrc, 'QZVFR2301719');
+});
