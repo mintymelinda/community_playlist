@@ -144,9 +144,16 @@ export function parseSpotifyCallbackUrl(callbackValue, handoff) {
   if (providerError) throw new Error('Spotify authorization was denied: ' + providerError);
 
   const code = callback.searchParams.get('code');
+  if (!code) {
+    throw new Error('The Spotify callback URL has no authorization code. After approving Spotify, copy the entire URL from the browser address bar, including ?code=...&state=...; do not enter only http://127.0.0.1:4173/.');
+  }
+
   const state = callback.searchParams.get('state');
-  if (!code || !state || state !== handoff.state) {
-    throw new Error('Spotify callback is missing its authorization code or has an invalid state. Start a new Spotify authorization stage.');
+  if (!state) {
+    throw new Error('The Spotify callback URL has no state parameter. Copy the complete URL after Spotify approval, including both code and state.');
+  }
+  if (state !== handoff.state) {
+    throw new Error('The Spotify callback state does not match the PKCE handoff. Use the callback URL from the same authorize_spotify run whose numeric run ID you entered.');
   }
 
   return { code, state };
