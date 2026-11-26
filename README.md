@@ -165,3 +165,6 @@ npm run verify
 \`\`\`
 
 See [the roadmap issue](https://github.com/mintymelinda/community_playlist/issues/1) and [technical validation notes](docs/technical-validation.md) for the remaining real-account/device verification.
+
+
+Playback confirmation: after Spotify accepts a play command, the coordinator polls current playback state for up to 20 seconds before declaring the request unconfirmed. It requires both the exact requested track URI and the target Connect device; stale player-state reads do not immediately fail playback.
