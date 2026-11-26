@@ -36,6 +36,24 @@ test('Spotify CI PKCE handoff encrypts verifier and validates the callback state
   assert.deepEqual(callback, { code: 'one-time-code', state: payload.state });
 });
 
+test('distinguishes a redirect-only URL from a complete Spotify callback URL', () => {
+  const { payload } = createSpotifyPkceHandoff({
+    clientId: 'spotify-public-client'
+  });
+  assert.throws(
+    () => parseSpotifyCallbackUrl('http://127.0.0.1:4173/', payload),
+    /has no authorization code.*do not enter only/
+  );
+  assert.throws(
+    () => parseSpotifyCallbackUrl('http://127.0.0.1:4173/?code=one-time-code', payload),
+    /has no state parameter/
+  );
+  assert.throws(
+    () => parseSpotifyCallbackUrl('http://127.0.0.1:4173/?code=one-time-code&state=wrong', payload),
+    /does not match the PKCE handoff/
+  );
+});
+
 test('rejects a Spotify Soloist key where the OAuth Client ID is required', () => {
   assert.throws(() => createSpotifyPkceHandoff({
     clientId: 'spak_device_pairing_key'
@@ -54,7 +72,7 @@ test('Spotify CI PKCE handoff rejects a wrong key, callback state, and expired h
   assert.throws(() => parseSpotifyCallbackUrl(
     'http://127.0.0.1:4173/?code=one-time-code&state=wrong-state',
     payload
-  ), /invalid state/);
+  ), /state does not match/);
   assert.throws(() => parseSpotifyCallbackUrl(
     'http://127.0.0.1:4174/?code=one-time-code&state=' + payload.state,
     payload
