@@ -281,6 +281,7 @@ export class PlaybackCoordinator {
     });
     const deadline = Date.now() + this.playbackConfirmationTimeoutMs;
     let lastState = null;
+    let lastObservedIsrc = null;
     let lastError = null;
 
     while (Date.now() < deadline) {
@@ -289,6 +290,10 @@ export class PlaybackCoordinator {
         const observedIsrc = state?.item?.external_ids?.isrc || null;
         const matchedByIsrc = Boolean(expectedIsrc && state?.item?.uri !== uri &&
           await this.trackMatchesRequest(state, { uri, isrc: expectedIsrc }));
+        if (matchedByIsrc) {
+          const metadata = await this.trackMetadataCache.get(state.item.uri);
+          lastObservedIsrc = metadata?.isrc || observedIsrc;
+        }
         if (state?.device?.id === deviceId && (trackUri(state) === uri || matchedByIsrc) && state.is_playing === true) {
           this.logger.info('[community-playlist] Playback confirmation matched.', {
             controllerInstance: this.instanceId, playAttemptId, requestId,
@@ -319,7 +324,7 @@ export class PlaybackCoordinator {
     const diagnostic = 'Expected track ' + uri + ' (ISRC ' + String(expectedIsrc || 'unknown') + ') on device ' + deviceId +
       '; last observed track ' + observedUri + ' (playable URI ' + playableUri +
       ') on device ' + observedDevice +
-      '; observed_isrc=' + String(lastState?.item?.external_ids?.isrc || this.trackMetadataCache.get(lastState?.item?.uri)?.isrc || 'not-in-player-state') +
+      '; observed_isrc=' + String(lastObservedIsrc || lastState?.item?.external_ids?.isrc || 'unresolved') +
       '; is_playing=' + String(lastState?.is_playing ?? 'unknown') +
       '; progress_ms=' + String(lastState?.progress_ms ?? 'unknown') +
       '; context=' + String(lastState?.context?.uri || 'none') +
