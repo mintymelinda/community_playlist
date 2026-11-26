@@ -44,6 +44,12 @@ export class SpotifyClient {
     return this.api('/me/player');
   }
 
+  async getTrack(uri) {
+    const parsed = parseSpotifyTrackInput(uri);
+    if (!parsed) throw new Error('A valid Spotify track URI is required.');
+    return normalizeSpotifyTrack(await this.api('/tracks/' + encodeURIComponent(parsed.id)));
+  }
+
   resumePlayback(deviceId) {
     const query = deviceId ? '?device_id=' + encodeURIComponent(deviceId) : '';
     return this.api('/me/player/play' + query, { method: 'PUT' });
