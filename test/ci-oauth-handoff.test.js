@@ -36,6 +36,12 @@ test('Spotify CI PKCE handoff encrypts verifier and validates the callback state
   assert.deepEqual(callback, { code: 'one-time-code', state: payload.state });
 });
 
+test('rejects a Spotify Soloist key where the OAuth Client ID is required', () => {
+  assert.throws(() => createSpotifyPkceHandoff({
+    clientId: 'spak_device_pairing_key'
+  }), /Soloist device\/pairing key/);
+});
+
 test('Spotify CI PKCE handoff rejects a wrong key, callback state, and expired handoff', () => {
   const { payload } = createSpotifyPkceHandoff({
     clientId: 'spotify-public-client',
