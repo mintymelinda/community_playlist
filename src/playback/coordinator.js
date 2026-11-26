@@ -200,7 +200,7 @@ export class PlaybackCoordinator {
     while (Date.now() < deadline) {
       try {
         const state = await this.spotify.getPlaybackState();
-        if (state?.device?.id === deviceId && trackUri(state) === uri) return state;
+        if (state?.device?.id === deviceId && trackUri(state) === uri && state.is_playing === true) return state;
         lastState = state || null;
       } catch (error) {
         // Spotify can briefly return an unavailable/stale player state after
@@ -222,7 +222,12 @@ export class PlaybackCoordinator {
     const observedDevice = lastState?.device?.id || 'none';
     const diagnostic = 'Expected track ' + uri + ' on device ' + deviceId +
       '; last observed track ' + observedUri + ' (playable URI ' + playableUri +
-      ') on device ' + observedDevice + '.' +
+      ') on device ' + observedDevice +
+      '; is_playing=' + String(lastState?.is_playing ?? 'unknown') +
+      '; progress_ms=' + String(lastState?.progress_ms ?? 'unknown') +
+      '; context=' + String(lastState?.context?.uri || 'none') +
+      '; item=' + String(lastState?.item?.name || 'unknown') +
+      '; restriction=' + String(lastState?.item?.restrictions?.reason || 'none') + '.' +
       (lastError ? ' Last playback-state API error: ' + lastError.message : '');
     this.logger.warn('[community-playlist] Spotify playback confirmation timed out. ' + diagnostic);
     return null;
