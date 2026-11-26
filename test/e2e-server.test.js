@@ -41,6 +41,28 @@ test('builds an allowlisted E2E config and ignores pasted secrets and tokens', (
   assert.equal(JSON.stringify(config).includes('must-not-be-used'), false);
 });
 
+test('normalizes the supplied bare Spotify IDs and retains the configured broadcaster ID', () => {
+  const config = buildConfig({
+    ...validEnv,
+    SPOTIFY_PLAYLIST_URI: '7IS0sJMyOz3XAhqRxkOwkC',
+    E2E_TRACK_X: '4EISOJDYezvr8UtIeOy3sj',
+    E2E_TRACK_Y: '5l8xjpKJW5Yj7mSSlSth3K',
+    TWITCH_BROADCASTER_ID: '56809801'
+  });
+
+  assert.equal(config.playlistUri, 'spotify:playlist:7IS0sJMyOz3XAhqRxkOwkC');
+  assert.equal(config.e2eTrackX, 'spotify:track:4EISOJDYezvr8UtIeOy3sj');
+  assert.equal(config.e2eTrackY, 'spotify:track:5l8xjpKJW5Yj7mSSlSth3K');
+  assert.equal(config.broadcasterId, '56809801');
+});
+
+test('rejects text search phrases in deterministic live E2E track settings', () => {
+  assert.throws(() => buildConfig({
+    ...validEnv,
+    E2E_TRACK_X: 'Song title and artist'
+  }), /must be a Spotify track ID, URI, or URL/);
+});
+
 test('requires both public client IDs, a playlist, and two distinct test tracks', () => {
   for (const key of [
     'TWITCH_CLIENT_ID',
