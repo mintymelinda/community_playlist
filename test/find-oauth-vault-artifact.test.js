@@ -45,7 +45,6 @@ test('fails clearly when Actions artifact permissions are unavailable', async ()
     findLatestOAuthVaultArtifact({
       repository: 'owner/repo',
       token: 'test-token',
-      currentRunId: '300',
       fetchImpl: fakeFetch({}, 403)
     }),
     /actions: read permission/
