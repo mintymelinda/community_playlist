@@ -107,7 +107,7 @@ test('preserves the next shuffled playlist track and shuffle setting across requ
   spotify.current.shuffle_state = true;
   spotify.getQueue = async () => [tracks[3], tracks[1], tracks[2]];
 
-  await coordinator.enqueue(request('shuffled-request', { ...tracks[0], name: 'X' }));
+  await coordinator.enqueue(request('shuffled-request', { ...tracks[2], name: 'X' }));
 
   assert.equal(store.get().snapshot.nextOffset, 3);
   assert.equal(store.get().snapshot.nextTrackUri, tracks[3].uri);
