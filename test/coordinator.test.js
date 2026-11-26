@@ -61,13 +61,13 @@ class FakeSpotify {
   }
 }
 
-function createCoordinator() {
+function createCoordinator(options = {}) {
   const spotify = new FakeSpotify();
   const store = new QueueStore(new MemoryStorage());
   const timers = { setInterval: () => 1, clearInterval: () => {} };
   const logger = { info() {}, warn() {}, error() {} };
   const coordinator = new PlaybackCoordinator({
-    spotify, store, playlistUri, playlistId: 'playlist1', timers, logger
+    spotify, store, playlistUri, playlistId: 'playlist1', timers, logger, ...options
   });
   return { spotify, store, coordinator };
 }
@@ -229,8 +229,63 @@ test('refuses to interrupt a playlist when a manual queue entry precedes its nex
   assert.equal(store.get().pending[0].id, 'request-1');
 });
 
+test('waits for delayed Spotify playback-state updates after play is accepted', async () => {
+  const { spotify, coordinator } = createCoordinator({
+    playbackConfirmationTimeoutMs: 2000,
+    playbackConfirmationPollMs: 100
+  });
+  const previous = clone(spotify.current);
+  let reads = 0;
+  spotify.getPlaybackState = async () => {
+    reads += 1;
+    if (reads <= 8) return previous;
+    return {
+      ...previous,
+      item: tracks[2],
+      is_playing: true,
+      progress_ms: 0
+    };
+  };
+
+  const confirmed = await coordinator.waitForTrack(tracks[2].uri, deviceId);
+
+  assert.equal(confirmed.item.uri, tracks[2].uri);
+  assert.ok(reads > 6, 'confirmation should continue beyond the old six-read limit');
+});
+
+test('keeps waiting through transient playback-state API errors', async () => {
+  const { coordinator } = createCoordinator({
+    playbackConfirmationTimeoutMs: 2000,
+    playbackConfirmationPollMs: 100
+  });
+  const previous = clone({
+    device: { id: deviceId },
+    context: { type: 'playlist', uri: playlistUri },
+    item: tracks[0],
+    is_playing: true,
+    shuffle_state: false,
+    repeat_state: 'off',
+    progress_ms: 12000
+  });
+  let reads = 0;
+  coordinator.spotify.getPlaybackState = async () => {
+    reads += 1;
+    if (reads <= 2) throw new Error('temporary Spotify player-state outage');
+    if (reads <= 5) return null;
+    return { ...previous, item: tracks[2], is_playing: true, progress_ms: 0 };
+  };
+
+  const confirmed = await coordinator.waitForTrack(tracks[2].uri, deviceId);
+
+  assert.equal(confirmed.item.uri, tracks[2].uri);
+  assert.ok(reads > 5);
+});
+
 test('hands off instead of retrying when Spotify play cannot be confirmed', async () => {
-  const { spotify, store, coordinator } = createCoordinator();
+  const { spotify, store, coordinator } = createCoordinator({
+    playbackConfirmationTimeoutMs: 1000,
+    playbackConfirmationPollMs: 100
+  });
   spotify.playTrack = async () => {};
   await assert.rejects(
     coordinator.enqueue(request('uncertain-request', { ...tracks[2], name: 'X' })),
