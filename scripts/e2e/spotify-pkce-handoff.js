@@ -136,6 +136,14 @@ export function parseSpotifyCallbackUrl(callbackValue, handoff) {
     throw new Error('Paste the complete Spotify redirect URL from the browser address bar.');
   }
 
+  if (callback.origin === 'https://accounts.spotify.com' && callback.pathname === '/authorize') {
+    throw new Error(
+      'You pasted the Spotify authorization link, not the callback URL. Open that link in a browser, approve Spotify, wait for the browser to redirect to ' +
+      handoff.redirectUri +
+      ', then copy the resulting URL from the address bar (including ?code=...&state=...). Do not paste the https://accounts.spotify.com/authorize link into spotify_callback_url.'
+    );
+  }
+
   const receivedRedirectUri = callback.origin + callback.pathname;
   if (receivedRedirectUri !== handoff.redirectUri) {
     throw new Error(
