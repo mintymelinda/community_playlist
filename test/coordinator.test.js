@@ -133,6 +133,32 @@ test('does not confuse a stale playlist-context read with natural completion of 
   assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri, tracks[3].uri]);
 });
 
+test('keeps a viewer request distinct when its URI matches the saved playlist continuation', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  await coordinator.enqueue(request('request-same-as-next', { ...tracks[1], name: 'Playlist-next recording' }));
+  await coordinator.enqueue(request('request-after', { ...tracks[3], name: 'Y' }));
+  coordinator.started = true;
+
+  // Spotify may retain playlist context even while the same recording is
+  // playing as a direct viewer request. The active request identity wins
+  // until its observed progress establishes natural completion.
+  spotify.current.context = { type: 'playlist', uri: playlistUri };
+  spotify.current.progress_ms = 1000;
+  await coordinator.poll();
+
+  assert.equal(store.get().active.id, 'request-same-as-next');
+  assert.deepEqual(store.get().pending.map(item => item.id), ['request-after']);
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[1].uri]);
+
+  store.update(state => { state.active.lastProgressMs = tracks[1].duration_ms - 2000; });
+  spotify.current.progress_ms = 0;
+  await coordinator.poll();
+
+  assert.equal(store.get().active.id, 'request-after');
+  assert.deepEqual(store.get().pending, []);
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[1].uri, tracks[3].uri]);
+});
+
 test('serializes a second redemption behind Spotify confirmation of the active request', async () => {
   const { spotify, store, coordinator } = createCoordinator();
   let releaseConfirmation;
