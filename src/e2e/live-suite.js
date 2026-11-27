@@ -236,12 +236,6 @@ export function createLiveE2ESuite(app) {
     return Boolean(observedIsrc && observedIsrc === expectedIsrc);
   }
 
-  async function waitForTrack(track, label) {
-    return waitFor(label + ' to become the actively playing Spotify current track', async () => {
-      const playback = await app.spotify.getPlaybackState();
-      return playback?.is_playing === true && await playbackMatchesTrack(playback, track) ? playback : null;
-    });
-  }
 
   async function waitForRequest(requestId, track, label) {
     return waitFor(label + ' to be confirmed as the active application request and Spotify playback', async () => {
