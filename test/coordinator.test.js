@@ -103,6 +103,36 @@ test('plays viewer requests FIFO ahead of the saved playlist continuation', asyn
   assert.equal(spotify.current.item.uri, tracks[1].uri);
 });
 
+test('does not confuse a stale playlist-context read with natural completion of the active viewer request', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  await coordinator.enqueue(request('request-x', { ...tracks[2], name: 'X' }));
+  await coordinator.enqueue(request('request-y', { ...tracks[3], name: 'Y' }));
+  coordinator.started = true;
+
+  spotify.current = {
+    device: { id: deviceId },
+    context: { type: 'playlist', uri: playlistUri },
+    item: tracks[1],
+    is_playing: true,
+    shuffle_state: false,
+    repeat_state: 'off',
+    progress_ms: 0
+  };
+  await coordinator.poll();
+
+  assert.equal(store.get().active.id, 'request-x');
+  assert.deepEqual(store.get().pending.map(item => item.id), ['request-y']);
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri]);
+  assert.equal(spotify.restored.length, 0);
+
+  store.update(state => { state.active.lastProgressMs = tracks[2].duration_ms - 2000; });
+  await coordinator.poll();
+
+  assert.equal(store.get().active.id, 'request-y');
+  assert.deepEqual(store.get().pending, []);
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri, tracks[3].uri]);
+});
+
 test('serializes a second redemption behind Spotify confirmation of the active request', async () => {
   const { spotify, store, coordinator } = createCoordinator();
   let releaseConfirmation;
@@ -473,6 +503,7 @@ test('recovers by advancing to the next viewer request if Spotify already resume
   });
   await firstCoordinator.enqueue(request('reload-complete-x', { ...tracks[2], name: 'X' }));
   await firstCoordinator.enqueue(request('reload-pending-y', { ...tracks[3], name: 'Y' }));
+  firstStore.update(state => { state.active.lastProgressMs = tracks[2].duration_ms - 2000; });
 
   spotify.current = {
     device: { id: deviceId },
