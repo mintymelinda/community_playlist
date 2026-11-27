@@ -1,6 +1,15 @@
 import { SerialExecutor } from '../lib/serial.js';
 import { resolveNextPlaylistOffset } from './position.js';
 
+function isPlaylistContext(spotify, playback, playlistId) {
+  if (playback?.context?.type !== 'playlist' || !playlistId) return false;
+  try {
+    return spotify.extractPlaylistId(playback.context.uri) === String(playlistId);
+  } catch {
+    return false;
+  }
+}
+
 function trackUri(state) {
   // Spotify can play a market-available replacement for the requested track.
   // In that case item.uri is the playable replacement and linked_from.uri is
@@ -181,7 +190,7 @@ export class PlaybackCoordinator {
       const state = this.store.get();
       if (state.mode !== 'handoff') return false;
       const current = await this.spotify.getPlaybackState();
-      if (!current || current.context?.uri !== this.playlistUri || !current.is_playing) {
+      if (!current || !isPlaylistContext(this.spotify, current, this.playlistId) || !current.is_playing) {
         throw new Error('Resume requires the configured playlist to be actively playing again.');
       }
       this.store.update(next => {
@@ -204,7 +213,7 @@ export class PlaybackCoordinator {
     if (playback.device.id !== deviceId) {
       throw new Error('The configured Spotify device is not the active playback device.');
     }
-    if (playback.context?.type !== 'playlist' || playback.context?.uri !== this.playlistUri) {
+    if (playback.context?.type !== 'playlist' || !isPlaylistContext(this.spotify, playback, this.playlistId)) {
       throw new Error('The configured playlist must be the active Spotify playback context.');
     }
     if (playback.repeat_state !== 'off') {
@@ -374,7 +383,7 @@ export class PlaybackCoordinator {
         }
         let matchedByFollowingQueue = false;
         if (expectedContextUri && expectedFollowingUri &&
-            state?.device?.id === deviceId && state?.context?.uri === expectedContextUri &&
+            state?.device?.id === deviceId && isPlaylistContext(this.spotify, state, this.playlistId) &&
             state?.is_playing === true && Date.now() >= nextQueueCheckAt) {
           nextQueueCheckAt = Date.now() + Math.max(1000, this.playbackConfirmationPollMs);
           try {
@@ -540,7 +549,7 @@ export class PlaybackCoordinator {
     const currentUri = trackUri(playback);
     const returnedToPlaylist = snapshot.nextTrackUri &&
       currentUri === snapshot.nextTrackUri &&
-      playback.context?.uri === (snapshot.playlistUri || this.playlistUri);
+      isPlaylistContext(this.spotify, playback, this.playlistId);
     const matchesActiveRequest = await this.trackMatchesRequest(playback, active);
 
     // A viewer may request the same recording that is next in the playlist.
@@ -626,7 +635,7 @@ export class PlaybackCoordinator {
       return;
     }
     const snapshotPlaylistUri = snapshot.playlistUri || this.playlistUri;
-    if (currentUri === snapshot.nextTrackUri && playback?.context?.uri === snapshotPlaylistUri) {
+    if (currentUri === snapshot.nextTrackUri && isPlaylistContext(this.spotify, playback, this.playlistId)) {
       this.store.update(next => {
         next.snapshot = null;
         next.mode = 'idle';
