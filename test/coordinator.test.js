@@ -899,3 +899,34 @@ test('confirms playlist restoration by its following queue item when the restore
   assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
   assert.equal(spotify.current.item.uri, playableUri);
 });
+
+
+test('matches the active playlist by Spotify ID when its context is reported as a web URL', async () => {
+  const { spotify, store, coordinator } = createCoordinator({ autoAdvanceToNextTrack: false });
+  const playlistUrl = 'https://open.spotify.com/playlist/playlist1?si=live-session';
+  spotify.current.context.uri = playlistUrl;
+
+  await coordinator.enqueue(request('playlist-id-context', tracks[2]));
+
+  assert.equal(store.get().mode, 'waiting-for-playlist');
+  assert.equal(store.get().snapshot.playlistUri, playlistUri);
+  assert.equal(store.get().snapshot.nextTrackUri, tracks[1].uri);
+
+  spotify.current = {
+    ...spotify.current,
+    context: { type: 'playlist', uri: playlistUrl },
+    item: tracks[1],
+    is_playing: true,
+    progress_ms: 100
+  };
+  coordinator.started = true;
+  try {
+    await coordinator.poll();
+  } finally {
+    coordinator.started = false;
+  }
+
+  assert.equal(store.get().active.id, 'playlist-id-context');
+  assert.equal(store.get().mode, 'playing-request');
+  assert.equal(spotify.played[0].uri, tracks[2].uri);
+});
