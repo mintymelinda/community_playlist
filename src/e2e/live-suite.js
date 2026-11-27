@@ -8,13 +8,10 @@ function spotifyTrackUri(track) {
   return track?.linked_from?.uri || track?.uri || null;
 }
 
-function isPlaylistContext(spotify, playback, playlistId) {
+function isPlaylistContext(_spotify, playback, playlistId) {
   if (playback?.context?.type !== 'playlist' || !playlistId) return false;
-  try {
-    return spotify.extractPlaylistId(playback.context.uri) === String(playlistId);
-  } catch {
-    return false;
-  }
+  const match = String(playback.context.uri || '').match(/(?:spotify:playlist:|open\\.spotify\\.com\\/playlist\\/)([A-Za-z0-9]+)/i);
+  return Boolean(match && match[1] === String(playlistId));
 }
 
 export function matchesPlaylistContinuationQueue({ playlistTracks, restoredOffset, upcomingTracks }) {
