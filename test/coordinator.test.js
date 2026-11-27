@@ -85,8 +85,8 @@ function createCoordinator(options = {}) {
           context: { type: 'playlist', uri: playlistUri },
           item: nextTrack,
           is_playing: true,
-          shuffle_state: false,
-          repeat_state: 'off',
+          shuffle_state: spotify.current.shuffle_state ?? false,
+          repeat_state: spotify.current.repeat_state ?? 'off',
           progress_ms: 100
         };
         coordinator.started = true;
