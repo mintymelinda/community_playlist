@@ -191,3 +191,7 @@ See [the roadmap issue](https://github.com/mintymelinda/community_playlist/issue
 
 
 Playback confirmation: after Spotify accepts a play command, the coordinator polls current playback state for up to 20 seconds before declaring the request unconfirmed. It requires both the exact requested track URI and the target Connect device; stale player-state reads do not immediately fail playback.
+
+## Thanks
+
+Special thanks to **[@Vinny_Vega](https://github.com/Vinny_Vega)** for helping with integration and end-to-end testing.
