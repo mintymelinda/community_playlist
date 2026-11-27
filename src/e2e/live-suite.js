@@ -241,9 +241,9 @@ export function createLiveE2ESuite(app) {
   }
 
   async function waitForTrack(track, label) {
-    return waitFor(label + ' to become the Spotify current track', async () => {
+    return waitFor(label + ' to become the actively playing Spotify current track', async () => {
       const playback = await app.spotify.getPlaybackState();
-      return await playbackMatchesTrack(playback, track) ? playback : null;
+      return playback?.is_playing === true && await playbackMatchesTrack(playback, track) ? playback : null;
     });
   }
 
@@ -279,6 +279,12 @@ export function createLiveE2ESuite(app) {
       assert(app.store.get().active?.id === firstId, 'An unauthorized !skip changed the active request.');
       checks.push({ name: 'Unauthorized !skip is rejected', passed: true });
 
+      const beforeAuthorizedSkip = await app.spotify.getPlaybackState();
+      state = app.store.get();
+      assert(state.active?.id === firstId && state.pending[0]?.id === secondId,
+        'Request X must still be active and request Y pending immediately before the authorized skip; refusing to skip a request that may already have advanced naturally.');
+      assert(beforeAuthorizedSkip?.is_playing === true && await playbackMatchesTrack(beforeAuthorizedSkip, trackX),
+        'Spotify no longer reports request X as actively playing immediately before the authorized skip; refusing to skip a different track.');
       await injectAuthorizedSkip(runId + '-skip-x', app.broadcasterId);
       await waitForTrack(trackY, 'request Y after broadcaster !skip');
       assert(app.store.get().active?.id === secondId, 'Broadcaster !skip did not advance to request Y.');
@@ -513,6 +519,13 @@ export function createLiveE2ESuite(app) {
       assert(afterUnauthorizedState.pending[0]?.id === secondId, 'An unauthorized real Twitch !skip changed the pending request.');
       checks.push({ name: 'A real non-moderator !skip is ignored', passed: true, chatterId: unauthorized.chatterId });
 
+      const beforeAuthorizedSkip = await app.spotify.getPlaybackState();
+      const stateBeforeAuthorizedSkip = app.store.get();
+      assert(stateBeforeAuthorizedSkip.active?.id === firstId &&
+        stateBeforeAuthorizedSkip.pending[0]?.id === secondId &&
+        beforeAuthorizedSkip?.is_playing === true &&
+        await playbackMatchesTrack(beforeAuthorizedSkip, trackX),
+      'Request X naturally advanced before the authorized chat skip arrived. The test stopped rather than allowing a late !skip to skip request Y.');
       const authorized = await waitForRealSkipMessage(true, timeoutMs);
       await waitForTrack(trackY, 'request Y after a real broadcaster/moderator !skip');
       assert(app.store.get().active?.id === secondId, 'The real broadcaster/moderator !skip did not advance to request Y.');
