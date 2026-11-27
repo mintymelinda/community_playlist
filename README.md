@@ -32,10 +32,10 @@ Use the hosted signup flow to connect Twitch and Spotify once and generate a pri
 
 1. Register a Twitch application as a **public client**. The controller uses Device Code authorization and requests only \`bits:read\` and \`user:read:chat\`. Authorize with the broadcaster's Twitch account.
 2. Register a Spotify app. Add the exact URL serving \`index.html\` to its redirect URI allowlist.
-3. Copy \`config.example.js\` to \`config.local.js\`. Set the Twitch and Spotify client IDs, exact Spotify redirect URI, and Spotify playlist URI. Leave \`broadcasterId\` blank to use the Twitch-authorized account. Leave \`powerUpId\` blank only when exactly one enabled text-input Power-up exists; otherwise set its ID.
+3. Copy \`config.example.js\` to \`config.local.js\`. Set the Twitch and Spotify client IDs and exact Spotify redirect URI. Leave \`playlistUri\` blank to follow the playlist already playing on the broadcaster's Spotify Connect device; set it only if you intentionally want to pin the controller to one playlist. Leave \`broadcasterId\` blank to use the Twitch-authorized account. Leave \`powerUpId\` blank only when exactly one enabled text-input Power-up exists; otherwise set its ID.
 4. Host the files from a static HTTPS origin. Do not open the page as a \`file://\` URL. Keep \`config.local.js\` on the same origin as the application and do not commit it.
 5. Open the page in the browser tab that will remain active. Open the browser developer console and run \`communityPlaylist.start()\`. Spotify authorization redirects the current tab to Spotify and returns to the configured page. Twitch Device Code authorization then prints a one-time verification URL and code to the console; enter the code at that URL.
-6. Open Spotify on the intended Connect device and start the configured playlist. Turn repeat off; shuffle may remain on. Requests are accepted only while the configured playlist is playing on the selected device.
+6. Open Spotify on the intended Connect device and start the playlist you want to use. Turn repeat off; shuffle may remain on. Requests are accepted only while the configured playlist is playing on the selected device.
 
 Example local configuration:
 
@@ -44,7 +44,8 @@ export default {
   twitchClientId: 'your-twitch-public-client-id',
   spotifyClientId: 'your-spotify-client-id',
   spotifyRedirectUri: 'https://example.com/community-playlist/',
-  playlistUri: 'spotify:playlist:yourPlaylistId',
+  // Optional: blank discovers the playlist currently playing on Spotify.
+  playlistUri: '',
   broadcasterId: '',
   powerUpId: '',
   spotifyDeviceId: '',

@@ -2,10 +2,12 @@
 
 ## User setup
 
-1. Open the signup page over HTTPS and enter the Spotify playlist URL or URI.
+1. Open the signup page over HTTPS.
 2. Authorize the Twitch broadcaster account and Spotify account.
 3. After both providers show connected, choose Finish setup.
 4. On the completion page, use COPY to retrieve the OBS Browser Source URL and paste it into OBS.
+
+The broadcaster does not provide a playlist URL. At runtime, the controller discovers the playlist already playing on the active Spotify Connect device and returns to that playlist after viewer requests. Start the playlist you want to use before accepting requests.
 
 **Do not share the OBS URL publicly.** It contains both providers' refresh credentials in its URL fragment. Anyone who obtains it can act on the connected accounts within the granted scopes. Treat it like a password.
 
