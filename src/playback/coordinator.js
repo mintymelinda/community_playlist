@@ -214,6 +214,17 @@ export class PlaybackCoordinator {
       upcomingTracks: upcoming,
       shuffle: playback.shuffle_state === true
     });
+    let nextTrackIsrc = playlistTracks[position.nextOffset]?.isrc || null;
+    if (!nextTrackIsrc && position.nextTrackUri) {
+      try {
+        nextTrackIsrc = (await this.spotify.getTrack(position.nextTrackUri))?.isrc || null;
+      } catch (error) {
+        this.logger.warn('[community-playlist] Could not resolve saved playlist continuation ISRC; exact-URI confirmation will still be used.', {
+          uri: position.nextTrackUri,
+          error: error.message
+        });
+      }
+    }
 
     return {
       playlistUri: this.playlistUri,
@@ -221,6 +232,7 @@ export class PlaybackCoordinator {
       currentTrackUri: currentUri,
       nextOffset: position.nextOffset,
       nextTrackUri: position.nextTrackUri,
+      nextTrackIsrc,
       playlistLength: playlistTracks.length,
       capturedAt: Date.now()
     };
@@ -491,7 +503,9 @@ export class PlaybackCoordinator {
     }
 
     await this.spotify.playPlaylistAt(snapshotPlaylistUri, snapshot.nextOffset, snapshot.deviceId);
-    const restored = await this.waitForTrack(snapshot.nextTrackUri, snapshot.deviceId);
+    const restored = await this.waitForTrack(snapshot.nextTrackUri, snapshot.deviceId, {
+      expectedIsrc: snapshot.nextTrackIsrc || null
+    });
     if (!restored) throw new Error('Spotify did not confirm the expected playlist continuation.');
     this.store.update(next => {
       next.snapshot = null;

@@ -318,7 +318,10 @@ export function createLiveE2ESuite(app) {
           Promise.resolve(app.store.get())
         ]);
         return playback?.context?.uri === playlistUri &&
-          playbackTrackUri(playback) === snapshot.nextTrackUri &&
+          await playbackMatchesTrack(playback, {
+            uri: snapshot.nextTrackUri,
+            isrc: snapshot.nextTrackIsrc || null
+          }) &&
           current.mode === 'idle' &&
           !current.active &&
           current.pending.length === 0 &&
