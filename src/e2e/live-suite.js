@@ -85,8 +85,14 @@ export function createLiveE2ESuite(app) {
       throw new Error('SPOTIFY_DEVICE_ID must be the active Spotify playback device so its original shuffle and repeat settings can be saved.');
     }
 
-    const playlistUri = app.config.playlistUri ||
-      (initialPlayback?.context?.type === 'playlist' ? initialPlayback.context.uri : '');
+    // The live E2E run must exercise the playlist the broadcaster already has
+    // playing. A configured default is only a fallback when Spotify has no
+    // active playlist; never switch the user's current playlist as a side effect
+    // of starting a test.
+    const activePlaylistUri = initialPlayback?.context?.type === 'playlist'
+      ? initialPlayback.context.uri
+      : '';
+    const playlistUri = activePlaylistUri || app.config.playlistUri || '';
     assert(playlistUri, 'Set SPOTIFY_PLAYLIST_URI or start a Spotify playlist first so the test can use the current playlist.');
     const playlistId = app.spotify.extractPlaylistId(playlistUri);
 
