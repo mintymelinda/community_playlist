@@ -166,6 +166,12 @@ This is a live integration test, not a hermetic test: it changes playback on the
 
 Tagged releases are verified and packaged automatically by GitHub Actions. The release ZIP contains the static application and setup documentation; no build or server-side runtime is required. See [release, deployment, and rollback instructions](docs/releasing.md).
 
+## Hosted authorization and OBS setup
+
+The hosted signup flow removes per-user configuration files and browser-console setup. The Node.js authorization service stores Twitch and Spotify refresh credentials encrypted on its persistent Docker volume, then generates a private OBS Browser Source URL. The URL carries the refresh credentials in its fragment; the static overlay consumes them and then runs independently of the Docker service.
+
+See [hosted authorization and OBS setup](docs/authorization-and-obs-setup.md) for the user flow, service deployment, OAuth redirect configuration, and URL security warning. The completion page deliberately hides the URL and exposes it only through COPY. Never share the generated URL publicly.
+
 ## Development
 
 There are no dependencies to install. Run:
