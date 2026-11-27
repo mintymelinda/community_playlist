@@ -543,7 +543,7 @@ export class PlaybackCoordinator {
     const playback = await this.spotify.getPlaybackState();
     const returnedToPlaylist = playback?.device?.id === state.snapshot.deviceId &&
       trackUri(playback) === state.snapshot.nextTrackUri &&
-      playback.context?.uri === this.playlistUri;
+      playback.context?.uri === (state.snapshot.playlistUri || this.playlistUri);
     const matchesActiveRequest = playback?.device?.id === state.snapshot.deviceId &&
       await this.trackMatchesRequest(playback, state.active);
 
@@ -564,10 +564,10 @@ export class PlaybackCoordinator {
       }
       const hasPending = state.pending.length > 0;
       this.store.update(next => {
-        next.lastRequestUri = next.active.uri;
+        next.lastRequestUri = next.active.lastPlaybackUri || next.active.uri;
         next.active = null;
         if (!hasPending) next.snapshot = null;
-        next.mode = 'idle';
+        next.mode = 'request-complete';
       });
       await this.pump();
       return;
