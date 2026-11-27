@@ -228,7 +228,20 @@ export class PlaybackCoordinator {
 
   async pump() {
     const state = this.store.get();
-    if (state.mode === 'handoff' || state.active) return;
+    // Dispatch is allowed only at a known queue boundary. If an active request
+    // disappears without an explicit skip/completion transition, do not let a
+    // later redemption overwrite Spotify playback.
+    const dispatchableModes = ['idle', 'waiting-for-playlist', 'request-complete', 'skipping'];
+    if (state.active || !dispatchableModes.includes(state.mode)) {
+      if (state.pending.length) {
+        this.logger.warn('[community-playlist] Pending request dispatch blocked because the queue is not at a confirmed transition boundary.', {
+          mode: state.mode,
+          activeRequestId: state.active?.id || null,
+          pendingRequestIds: state.pending.map(item => item.id)
+        });
+      }
+      return;
+    }
 
     if (!state.pending.length) {
       if (state.snapshot) await this.restorePlaylist();
@@ -383,7 +396,7 @@ export class PlaybackCoordinator {
     const currentUri = trackUri(playback);
     const returnedToPlaylist = snapshot.nextTrackUri &&
       currentUri === snapshot.nextTrackUri &&
-      playback.context?.uri === this.playlistUri;
+      playback.context?.uri === (snapshot.playlistUri || this.playlistUri);
     const matchesActiveRequest = await this.trackMatchesRequest(playback, active);
 
     // A viewer may request the same recording that is next in the playlist.
@@ -411,7 +424,7 @@ export class PlaybackCoordinator {
         next.lastRequestUri = next.active.lastPlaybackUri || next.active.uri;
         next.active = null;
         if (!hasPending) next.snapshot = null;
-        next.mode = 'idle';
+        next.mode = 'request-complete';
       });
       await this.pump();
       return;
@@ -468,7 +481,8 @@ export class PlaybackCoordinator {
       this.handoff('Playback changed manually before playlist restoration; leaving it untouched.');
       return;
     }
-    if (currentUri === snapshot.nextTrackUri && playback?.context?.uri === this.playlistUri) {
+    const snapshotPlaylistUri = snapshot.playlistUri || this.playlistUri;
+    if (currentUri === snapshot.nextTrackUri && playback?.context?.uri === snapshotPlaylistUri) {
       this.store.update(next => {
         next.snapshot = null;
         next.mode = 'idle';
@@ -476,7 +490,7 @@ export class PlaybackCoordinator {
       return;
     }
 
-    await this.spotify.playPlaylistAt(this.playlistUri, snapshot.nextOffset, snapshot.deviceId);
+    await this.spotify.playPlaylistAt(snapshotPlaylistUri, snapshot.nextOffset, snapshot.deviceId);
     const restored = await this.waitForTrack(snapshot.nextTrackUri, snapshot.deviceId);
     if (!restored) throw new Error('Spotify did not confirm the expected playlist continuation.');
     this.store.update(next => {
