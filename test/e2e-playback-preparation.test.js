@@ -14,7 +14,17 @@ const tracks = [
 const testX = { id: 'x', uri: 'spotify:track:x', name: 'X', duration_ms: 180000 };
 const testY = { id: 'y', uri: 'spotify:track:y', name: 'Y', duration_ms: 180000 };
 
-function createApp({ configuredPlaylist = playlistUri, initialContext = 'spotify:album:other', isPlaying = true, shuffle = true, repeat = 'context' } = {}) {
+function createApp({
+  configuredPlaylist = playlistUri,
+  initialContext = 'spotify:album:other',
+  isPlaying = true,
+  shuffle = true,
+  repeat = 'context',
+  resolvedX = testX,
+  resolvedY = testY,
+  currentTrackUri = tracks[1].uri,
+  nextTrackUri = tracks[2].uri
+} = {}) {
   const playback = {
     device: { id: deviceId },
     context: initialContext ? {
@@ -36,7 +46,7 @@ function createApp({ configuredPlaylist = playlistUri, initialContext = 'spotify
       return tracks;
     },
     async getQueue() { return [tracks[2], tracks[3]]; },
-    async resolveTrack(input) { return input === 'test-x' ? testX : testY; },
+    async resolveTrack(input) { return input === 'test-x' ? resolvedX : resolvedY; },
     extractPlaylistId(uri) { return uri.split(':').at(-1); },
     async setShuffle(enabled, targetDevice) {
       calls.push({ method: 'setShuffle', enabled, targetDevice });
@@ -83,9 +93,9 @@ function createApp({ configuredPlaylist = playlistUri, initialContext = 'spotify
         return {
           playlistUri: this.playlistUri,
           deviceId,
-          currentTrackUri: tracks[1].uri,
+          currentTrackUri,
           nextOffset: 2,
-          nextTrackUri: tracks[2].uri,
+          nextTrackUri,
           playlistLength: tracks.length,
           capturedAt: Date.now()
         };
@@ -142,6 +152,35 @@ test('preflight uses the active playlist when no playlist URI is configured and 
   await suite.restorePlaybackSettings();
   assert.equal(playback.shuffle_state, false);
   assert.equal(playback.repeat_state, 'off');
+});
+
+test('preflight allows both viewer requests to be the same Spotify track', async () => {
+  const { app } = createApp({ resolvedY: testX });
+  const suite = createLiveE2ESuite(app);
+
+  const result = await suite.preflight();
+
+  assert.equal(result.trackX.uri, testX.uri);
+  assert.equal(result.trackY.uri, testX.uri);
+  await suite.restorePlaybackSettings();
+});
+
+test('preflight allows viewer requests that are already in the playlist, including its current and next tracks', async () => {
+  const currentTrack = { ...tracks[1], duration_ms: 180000 };
+  const nextTrack = { ...tracks[2], duration_ms: 180000 };
+  const { app } = createApp({
+    resolvedX: currentTrack,
+    resolvedY: nextTrack,
+    currentTrackUri: currentTrack.uri,
+    nextTrackUri: nextTrack.uri
+  });
+  const suite = createLiveE2ESuite(app);
+
+  const result = await suite.preflight();
+
+  assert.equal(result.trackX.uri, currentTrack.uri);
+  assert.equal(result.trackY.uri, nextTrack.uri);
+  await suite.restorePlaybackSettings();
 });
 
 test('preflight requires a configured or currently loaded playlist context', async () => {
