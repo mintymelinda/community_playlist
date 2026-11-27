@@ -105,6 +105,20 @@ export class PlaybackCoordinator {
     };
   }
 
+  hasNaturallyCompleted(active) {
+    const durationMs = Number(active?.durationMs) || 0;
+    const progressMs = Number(active?.lastProgressMs) || 0;
+    if (!durationMs) return false;
+
+    // A playlist-context player-state response is not enough to prove that a
+    // viewer request ended: Spotify can briefly return a stale playlist item
+    // after accepting a direct track play. Require progress observed on the
+    // active request to be close to its duration before treating the saved
+    // playlist continuation as a natural completion.
+    const completionWindowMs = Math.max(5000, this.pollIntervalMs * 2);
+    return progressMs >= durationMs - completionWindowMs;
+  }
+
   async trackMatchesRequest(state, request) {
     if (!state?.item || !request) return false;
     if (trackUri(state) === request.uri) return true;
@@ -371,8 +385,22 @@ export class PlaybackCoordinator {
       playback.context?.uri === this.playlistUri;
 
     if (returnedToPlaylist) {
+      if (!this.hasNaturallyCompleted(active)) {
+        const staleReadGraceMs = Math.max(10000, this.pollIntervalMs * 3);
+        if (Date.now() - (Number(active.startedAt) || Date.now()) <= staleReadGraceMs) {
+          this.logger.warn('[community-playlist] Ignoring a playlist-state read that does not prove the active viewer request completed naturally.', {
+            requestId: active.id,
+            lastProgressMs: active.lastProgressMs || 0,
+            durationMs: active.durationMs || 0
+          });
+          return;
+        }
+        this.handoff('Spotify left the active viewer request before its natural completion could be confirmed. Remaining requests were preserved.');
+        return;
+      }
+
       const hasPending = state.pending.length > 0;
-      this.logger.info('[community-playlist] Spotify returned to the expected playlist continuation.');
+      this.logger.info('[community-playlist] Active viewer request completed; Spotify returned to the expected playlist continuation.');
       this.store.update(next => {
         next.lastRequestUri = next.active.uri;
         next.active = null;
@@ -504,6 +532,10 @@ export class PlaybackCoordinator {
     if (playback?.device?.id === state.snapshot.deviceId &&
         trackUri(playback) === state.snapshot.nextTrackUri &&
         playback.context?.uri === this.playlistUri) {
+      if (!this.hasNaturallyCompleted(state.active)) {
+        this.handoff('The previous session reached the playlist continuation without persisted evidence that the active viewer request completed naturally. Requests were preserved for manual recovery.');
+        return;
+      }
       const hasPending = state.pending.length > 0;
       this.store.update(next => {
         next.lastRequestUri = next.active.uri;
