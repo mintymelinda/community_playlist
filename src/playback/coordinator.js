@@ -249,6 +249,7 @@ export class PlaybackCoordinator {
       currentTrackUri: currentUri,
       currentTrackProgressMs: Number(playback.progress_ms) || 0,
       currentTrackDurationMs: Number(playback.item?.duration_ms) || 0,
+      shuffle: playback.shuffle_state === true,
       nextOffset: position.nextOffset,
       nextTrackUri: position.nextTrackUri,
       nextTrackIsrc,
