@@ -164,9 +164,49 @@ export class PlaybackCoordinator {
   async skip() {
     return this.serial.run(async () => {
       const state = this.store.get();
-      if (!state.active) return false;
       const current = await this.spotify.getPlaybackState();
-      if (!current || current.device?.id !== state.snapshot?.deviceId || !(await this.trackMatchesRequest(current, state.active))) {
+      if (!current || !current.device?.id) return false;
+
+      if (!state.active) {
+        // A moderator can also skip the broadcaster's ordinary playlist
+        // track. Previously this returned false unless a viewer request was
+        // active, leaving requests waiting for a natural track boundary.
+        if (!['idle', 'waiting-for-playlist'].includes(state.mode) ||
+            !this.matchesPlaylistContext(current)) {
+          return false;
+        }
+
+        const expectedDeviceId = state.snapshot?.deviceId || this.configuredDeviceId || current.device.id;
+        if (current.device.id !== expectedDeviceId) {
+          this.handoff('Spotify changed playback devices before the playlist skip command could be applied.');
+          return false;
+        }
+
+        if (state.mode === 'waiting-for-playlist' && state.snapshot) {
+          const currentUri = trackUri(current);
+          if (currentUri !== state.snapshot.currentTrackUri) {
+            // The playlist may have advanced between the chat message and
+            // this read. Reconcile that boundary rather than skipping a
+            // second track accidentally.
+            await this.pollWaitingForPlaylist();
+            return true;
+          }
+        }
+
+        if (typeof this.spotify.skipToNext !== 'function') {
+          throw new Error('Spotify skip-to-next is unavailable in this client.');
+        }
+        await this.spotify.skipToNext(expectedDeviceId);
+        this.logger.info('[community-playlist] Skipped the broadcaster playlist track.', {
+          deviceId: expectedDeviceId,
+          currentTrackUri: trackUri(current),
+          pendingRequestIds: state.pending.map(item => item.id)
+        });
+        return true;
+      }
+
+      if (current.device?.id !== state.snapshot?.deviceId ||
+          !(await this.trackMatchesRequest(current, state.active))) {
         this.handoff('Playback changed before the skip command could be applied.');
         return false;
       }

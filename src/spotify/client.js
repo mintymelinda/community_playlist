@@ -104,12 +104,22 @@ export class SpotifyClient {
     const result = await this.api('/search?' + new URLSearchParams({
       q: query,
       type: 'track',
-      limit: '1'
+      limit: '10'
     }));
-    const track = result?.tracks?.items?.[0];
-    const normalized = normalizeSpotifyTrack(track);
+    // Search relevance and market availability are independent: Spotify can
+    // rank an unavailable edition first even when a playable edition of the
+    // same recording is immediately below it. Select the first playable
+    // result rather than rejecting the entire redemption on item zero.
+    const normalized = (result?.tracks?.items || [])
+      .map(normalizeSpotifyTrack)
+      .find(Boolean);
     if (!normalized) throw new Error('Spotify could not find an available track for: ' + query);
     return normalized;
+  }
+
+  skipToNext(deviceId) {
+    const query = deviceId ? '?device_id=' + encodeURIComponent(deviceId) : '';
+    return this.api('/me/player/next' + query, { method: 'POST' });
   }
 
   playTrack(uri, deviceId) {
