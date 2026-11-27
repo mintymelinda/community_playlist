@@ -1,0 +1,17 @@
+services:
+  community-playlist-auth:
+    build: .
+    container_name: community-playlist-auth
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATA_DIR: /data
+      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:?Set the service Twitch public client ID}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:?Set the service Spotify public client ID}
+      OVERLAY_BASE_URL: ${OVERLAY_BASE_URL:-https://mintymelinda.github.io/community_playlist/overlay.html}
+    volumes:
+      - community-playlist-auth-data:/data
+    ports:
+      - "3000:3000"
+volumes:
+  community-playlist-auth-data:

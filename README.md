@@ -24,7 +24,11 @@ Spotify itself handles all audio playback. This project does not capture, proces
 - A static HTTPS host and a browser tab that remains open while requests are being handled.
 - Node.js 22 or newer for development. No runtime or development dependencies are required.
 
-## Setup
+## Recommended setup
+
+Use the hosted signup flow to connect Twitch and Spotify once and generate a private OBS Browser Source URL. You do not need to edit browser configuration or authorize from the browser console. Follow the [hosted authorization and OBS setup guide](docs/authorization-and-obs-setup.md).
+
+## Legacy manual setup
 
 1. Register a Twitch application as a **public client**. The controller uses Device Code authorization and requests only \`bits:read\` and \`user:read:chat\`. Authorize with the broadcaster's Twitch account.
 2. Register a Spotify app. Add the exact URL serving \`index.html\` to its redirect URI allowlist.
@@ -51,7 +55,7 @@ export default {
 
 The redirect URI must exactly match the URL serving \`index.html\`, including path and trailing slash. The Spotify account must be able to read the configured playlist items.
 
-## Runtime
+## Legacy manual runtime
 
 The page is intentionally blank. Diagnostics are written to the browser console. Once started, these console commands are available:
 
@@ -165,6 +169,12 @@ This is a live integration test, not a hermetic test: it changes playback on the
 ## Releases and deployment
 
 Tagged releases are verified and packaged automatically by GitHub Actions. The release ZIP contains the static application and setup documentation; no build or server-side runtime is required. See [release, deployment, and rollback instructions](docs/releasing.md).
+
+## Hosted authorization and OBS setup
+
+The hosted signup flow removes per-user configuration files and browser-console setup. The Node.js authorization service stores Twitch and Spotify refresh credentials encrypted on its persistent Docker volume, then generates a private OBS Browser Source URL. The URL carries the refresh credentials in its fragment; the static overlay consumes them and then runs independently of the Docker service.
+
+See [hosted authorization and OBS setup](docs/authorization-and-obs-setup.md) for the user flow, service deployment, OAuth redirect configuration, and URL security warning. The completion page deliberately hides the URL and exposes it only through COPY. Never share the generated URL publicly.
 
 ## Development
 

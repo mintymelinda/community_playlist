@@ -19,7 +19,7 @@ function validateConfig(config) {
     throw new Error('Set playlistUri in config.local.js before starting the controller.');
   }
   const redirect = new URL(config.spotifyRedirectUri);
-  if (redirect.origin !== location.origin || redirect.pathname !== location.pathname || redirect.search || redirect.hash) {
+  if (!config.provisioned && (redirect.origin !== location.origin || redirect.pathname !== location.pathname || redirect.search || redirect.hash)) {
     throw new Error('spotifyRedirectUri must exactly match the current page URL, without a query string or fragment.');
   }
 }
@@ -33,6 +33,11 @@ class CommunityPlaylistApp {
     this.autoStartKey = this.e2eMode ? 'community-playlist-e2e-auto-start' : AUTO_START_KEY;
     const queueKey = this.e2eMode ? 'community-playlist-e2e-queue-v1' : 'community-playlist-queue-v1';
     const storagePrefix = this.e2eMode ? 'community-playlist-e2e-' : 'community-playlist-';
+    const authStorage = config.provisioned ? localStorage : sessionStorage;
+    if (config.provisioned) {
+      if (config.twitchToken) localStorage.setItem('community-playlist-twitch-token', JSON.stringify(config.twitchToken));
+      if (config.spotifyToken) localStorage.setItem('community-playlist-spotify-token', JSON.stringify(config.spotifyToken));
+    }
     if (this.e2eMode && sessionStorage.getItem('community-playlist-e2e-initialized') !== '1') {
       localStorage.removeItem(queueKey);
       sessionStorage.setItem('community-playlist-e2e-initialized', '1');
@@ -41,9 +46,9 @@ class CommunityPlaylistApp {
     this.twitchAuth = new TwitchAuth({
       clientId: config.twitchClientId,
       scopes: ['bits:read', 'user:read:chat'],
-      tokenStore: new TokenStore(sessionStorage, storagePrefix + 'twitch-token')
+      tokenStore: new TokenStore(authStorage, storagePrefix + 'twitch-token')
     });
-    const spotifyTokenStore = new TokenStore(sessionStorage, storagePrefix + 'spotify-token');
+    const spotifyTokenStore = new TokenStore(authStorage, storagePrefix + 'spotify-token');
     const spotifyPkceStore = new TokenStore(sessionStorage, storagePrefix + 'spotify-pkce');
     this.spotifyAuth = new SpotifyAuth({
       clientId: config.spotifyClientId,
@@ -225,16 +230,42 @@ class CommunityPlaylistApp {
   }
 }
 
+function readProvisionedConfig() {
+  let config = null;
+  const match = location.hash.match(/^#cp=([A-Za-z0-9_-]+)$/);
+  if (match) {
+    const encoded = match[1].replace(/-/g, '+').replace(/_/g, '/');
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    config = JSON.parse(new TextDecoder().decode(bytes));
+    if (config.version !== 1 || config.provisioned !== true) throw new Error('Invalid OBS provisioning data.');
+    history.replaceState({}, document.title, location.pathname + location.search);
+    if (config.twitchToken) localStorage.setItem('community-playlist-twitch-token', JSON.stringify(config.twitchToken));
+    if (config.spotifyToken) localStorage.setItem('community-playlist-spotify-token', JSON.stringify(config.spotifyToken));
+    delete config.twitchToken;
+    delete config.spotifyToken;
+    localStorage.setItem('community-playlist-provisioned-config', JSON.stringify(config));
+  }
+  if (!config) {
+    try { config = JSON.parse(localStorage.getItem('community-playlist-provisioned-config') || 'null'); }
+    catch { config = null; }
+  }
+  return config;
+}
+
 async function bootstrap() {
-  let configModule;
-  try {
-    configModule = await import('../config.local.js');
-  } catch {
-    console.error('[community-playlist] Missing config.local.js. Copy config.example.js to config.local.js and configure the client IDs and playlist URI.');
-    return;
+  let config = readProvisionedConfig();
+  if (!config) {
+    try {
+      const configModule = await import('../config.local.js');
+      config = configModule.default || configModule;
+    } catch {
+      console.error('[community-playlist] No provisioned OBS configuration or config.local.js was found.');
+      return;
+    }
   }
 
-  const app = new CommunityPlaylistApp(configModule.default || configModule);
+  const app = new CommunityPlaylistApp(config);
   globalThis.communityPlaylist = {
     start: () => app.start().catch(error => {
       console.error('[community-playlist] Could not start:', error);
@@ -260,11 +291,10 @@ async function bootstrap() {
     };
   }
 
-  console.info('[community-playlist] Headless controller loaded. Run communityPlaylist.start() in the console.');
-  if (sessionStorage.getItem(app.autoStartKey) === '1') {
+  console.info('[community-playlist] Headless controller loaded.');
+  if (config.autoStart || sessionStorage.getItem(app.autoStartKey) === '1') {
     sessionStorage.removeItem(app.autoStartKey);
     await app.start();
   }
 }
-
 bootstrap().catch(error => console.error('[community-playlist] Initialization failed:', error));
