@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: community-playlist-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify source and release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$TAG_VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} does not match package.json version ${PACKAGE_VERSION}."
+            exit 1
+          fi
+
+      - name: Assemble distributable archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          PACKAGE_DIR="community-playlist-${TAG}"
+          STAGING="dist/${PACKAGE_DIR}"
+          mkdir -p "$STAGING"
+          cp index.html config.example.js README.md "$STAGING/"
+          cp -R src docs "$STAGING/"
+          (
+            cd dist
+            zip -qr "${PACKAGE_DIR}.zip" "$PACKAGE_DIR"
+            sha256sum "${PACKAGE_DIR}.zip" > "${PACKAGE_DIR}.zip.sha256"
+          )
+          echo "Release archive:"
+          ls -lh "dist/${PACKAGE_DIR}.zip" "dist/${PACKAGE_DIR}.zip.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          PACKAGE_DIR="community-playlist-${TAG}"
+          ARGS=(
+            release create "$TAG"
+            "dist/${PACKAGE_DIR}.zip"
+            "dist/${PACKAGE_DIR}.zip.sha256"
+            --verify-tag
+            --title "Community Playlist ${TAG}"
+            --generate-notes
+          )
+          if [[ "$TAG" == *-* ]]; then
+            ARGS+=(--prerelease)
+          fi
+          gh "${ARGS[@]}"

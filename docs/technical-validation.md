@@ -117,14 +117,16 @@ Source: [Spotify Start/Resume Playback policy notes](https://developer.spotify.c
 
 ## Current validation status
 
+The GitHub Actions live integration run has passed against the configured Spotify Premium account and Connect device. It verifies real Spotify playback for the request sequence, authorized skip behaviour, restoration to the original playlist context, playlist non-mutation, and Twitch EventSub reconnection. The redemption notifications in that run are synthetic; this does not count as verification of a real Custom Power-up redemption delivery. Background-tab throttling and browser-reload recovery remain separate tests.
+
 - [x] Minimal headless browser entry point.
 - [x] OAuth implementations for Twitch Device Code and Spotify PKCE.
 - [x] Twitch redemption and chat EventSub subscriptions.
 - [x] Separate FIFO queue, duplicate suppression, moderator-only skip, and recovery safeguards.
 - [x] Spotify request resolution, playback state polling, and playlist offset restoration implementation.
 - [x] Automated tests for parsing, authorization decisions, retryable redemption processing, concurrent duplicate delivery, queue idempotency, EventSub session migration/reconnect/keepalive/stop, playback sequencing, and restoration safeguards.
-- [ ] Real broadcaster Custom Power-up payload verified against a live channel.
-- [ ] Real Spotify Premium interruption/restoration sequence verified on the target Connect device.
+- [ ] Real broadcaster Custom Power-up redemption payload and delivery verified against a live channel.
+- [x] Live Spotify Premium interruption, FIFO request playback, skip, playlist restoration, and playlist non-mutation E2E sequence passed on the configured Connect device.
 - [ ] Background-tab and browser-reload timing tested on the intended browser.
 
 

@@ -81,7 +81,7 @@ After the viewer FIFO is exhausted, it restores the playlist at the saved next o
 
 If the device changes or unrelated manual playback is detected, the controller stops taking over, preserves unplayed requests, and enters handoff mode. It never pauses or rewrites the user's playlist.
 
-**Important limitation:** Spotify does not expose the active playlist offset directly, and API success responses do not prove the intended item is playing. This controller infers the position using the playlist items and upcoming queue, verifies the actual track after commands, and restores by playlist context plus offset. These behaviours have mock-based tests but still require verification on the actual Premium account and Connect device. Browser throttling or loss of the active tab can still delay polling enough to affect the exact transition timing.
+**Important limitation:** Spotify does not expose the active playlist offset directly, and API success responses do not prove the intended item is playing. This controller infers the position using the playlist items and upcoming queue, verifies the actual track after commands, and restores by playlist context plus offset. The live Spotify interruption/request/skip/restoration E2E sequence has passed on the configured Premium account and Connect device. Browser throttling or loss of the active tab can still delay polling enough to affect transition timing and remains a separate validation item.
 
 Spotify's platform terms prohibit broadcasting Spotify content and synchronizing sound recordings with visual media. This app remains headless and has no audio or visual rendering path; it must not be used to pipe Spotify audio into a broadcast or to synchronize Spotify recordings with an overlay.
 
@@ -161,6 +161,10 @@ The Spotify PKCE verifier is encrypted with AES-256-GCM in a one-day artifact. T
 The default test performs live preflight, the synthetic-redemption X → Y playback sequence, unauthorized skip rejection, broadcaster skip, playlist restoration, playlist non-mutation checks, and Twitch EventSub reconnect verification. Synthetic redemption notifications do not spend Bits. Selecting `run_real_chat_test` additionally waits for a real ordinary viewer `!skip` and then a broadcaster/moderator `!skip` in Twitch chat. It does not perform a real Custom Power-up redemption.
 
 This is a live integration test, not a hermetic test: it changes playback on the configured Spotify Connect device. If a test fails after playback takeover, inspect Spotify and restore the playlist manually before retrying. Only one live run controls the device at a time.
+
+## Releases and deployment
+
+Tagged releases are verified and packaged automatically by GitHub Actions. The release ZIP contains the static application and setup documentation; no build or server-side runtime is required. See [release, deployment, and rollback instructions](docs/releasing.md).
 
 ## Development
 

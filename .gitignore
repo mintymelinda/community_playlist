@@ -13,3 +13,6 @@ config.local.js
 .DS_Store
 node_modules/
 coverage/
+
+# Generated release archives
+/dist/
