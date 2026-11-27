@@ -741,3 +741,51 @@ test('restores a playlist track when Spotify reports its market-relinked playabl
   assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
   assert.equal(spotify.current.item.uri, playableUri);
 });
+
+
+test('confirms playlist restoration by its following queue item when the restored track URI is market-relinked and metadata is unavailable', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  const expectedIsrc = 'ITA870700318';
+  const playableUri = 'spotify:track:market-playable-restored-track';
+
+  spotify.getPlaylistItems = async () => [
+    tracks[0],
+    { ...tracks[1], isrc: expectedIsrc },
+    tracks[2],
+    tracks[3]
+  ];
+  spotify.getTrack = async uri => {
+    if (uri === playableUri) {
+      const error = new Error('Spotify track metadata is unavailable in this market.');
+      error.status = 404;
+      throw error;
+    }
+    return { ...tracks.find(track => track.uri === uri), isrc: expectedIsrc };
+  };
+  spotify.playPlaylistAt = async (uri, offset, targetDevice) => {
+    spotify.restored.push({ uri, offset, targetDevice });
+    spotify.current = {
+      device: { id: targetDevice },
+      context: { type: 'playlist', uri },
+      item: { uri: playableUri, name: 'Market-playable restored item', duration_ms: 180000 },
+      is_playing: true,
+      progress_ms: 12000
+    };
+  };
+  spotify.getQueue = async () => spotify.restored.length
+    ? [tracks[2], tracks[3]]
+    : tracks.slice(1);
+
+  await coordinator.enqueue(request('request-before-relinked-restore', tracks[3]));
+
+  assert.equal(store.get().snapshot.nextTrackUri, tracks[1].uri);
+  assert.equal(store.get().snapshot.nextTrackIsrc, expectedIsrc);
+  assert.equal(store.get().snapshot.followingTrackUri, tracks[2].uri);
+
+  assert.equal(await coordinator.skip(), true);
+  assert.equal(store.get().mode, 'idle');
+  assert.equal(store.get().snapshot, null);
+  assert.equal(store.get().active, null);
+  assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
+  assert.equal(spotify.current.item.uri, playableUri);
+});
