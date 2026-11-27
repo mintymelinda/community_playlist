@@ -162,6 +162,10 @@ The default test performs live preflight, the synthetic-redemption X → Y playb
 
 This is a live integration test, not a hermetic test: it changes playback on the configured Spotify Connect device. If a test fails after playback takeover, inspect Spotify and restore the playlist manually before retrying. Only one live run controls the device at a time.
 
+## Releases and deployment
+
+Tagged releases are verified and packaged automatically by GitHub Actions. The release ZIP contains the static application and setup documentation; no build or server-side runtime is required. See [release, deployment, and rollback instructions](docs/releasing.md).
+
 ## Development
 
 There are no dependencies to install. Run:
