@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createLiveE2ESuite, matchesPlaylistContinuationQueue, playbackTrackUri } from '../src/e2e/live-suite.js';
 import { MemoryStorage, QueueStore } from '../src/lib/queue-store.js';
 
-const playlistUri = 'spotify:playlist:target-playlist';
+const playlistUri = 'spotify:playlist:targetplaylist';
 const deviceId = 'connect-device';
 const tracks = [
   null,
@@ -93,10 +93,10 @@ function createApp({
     spotify,
     store,
     playlistUri: configuredPlaylist,
-    playlistId: configuredPlaylist ? 'target-playlist' : '',
+    playlistId: configuredPlaylist ? 'targetplaylist' : '',
     coordinator: {
       playlistUri: configuredPlaylist,
-      playlistId: configuredPlaylist ? 'target-playlist' : '',
+      playlistId: configuredPlaylist ? 'targetplaylist' : '',
       async captureSnapshot() {
         return {
           playlistUri: this.playlistUri,
@@ -120,7 +120,7 @@ test('preflight loads the selected playlist, preserves shuffle, clears only the 
   const result = await suite.preflight();
 
   assert.equal(app.coordinator.playlistUri, playlistUri);
-  assert.equal(app.coordinator.playlistId, 'target-playlist');
+  assert.equal(app.coordinator.playlistId, 'targetplaylist');
   assert.equal(result.playlistUri, playlistUri);
   assert.equal(playback.context.uri, playlistUri);
   assert.equal(playback.is_playing, true);
@@ -141,8 +141,8 @@ test('preflight loads the selected playlist, preserves shuffle, clears only the 
 });
 
 test('preflight keeps the currently playing playlist instead of switching to the configured default', async () => {
-  const challengeRunUri = 'spotify:playlist:challenge-run';
-  const lowFlyUri = 'spotify:playlist:low-fly';
+  const challengeRunUri = 'spotify:playlist:challengerun';
+  const lowFlyUri = 'spotify:playlist:lowfly';
   const { app, calls, playback } = createApp({
     configuredPlaylist: challengeRunUri,
     initialContext: lowFlyUri,
@@ -155,7 +155,7 @@ test('preflight keeps the currently playing playlist instead of switching to the
 
   assert.equal(result.playlistUri, lowFlyUri);
   assert.equal(app.playlistUri, lowFlyUri);
-  assert.equal(app.playlistId, 'low-fly');
+  assert.equal(app.playlistId, 'lowfly');
   assert.equal(app.coordinator.playlistUri, lowFlyUri);
   assert.equal(playback.context.uri, lowFlyUri);
   assert.equal(calls.some(call => call.method === 'playPlaylistAt'), false);
@@ -297,7 +297,7 @@ test('matches Spotify relinked playback to the originally requested track URI', 
 
 
 test('preflight matches a live playlist web URL by its Spotify ID and uses the canonical playlist URI', async () => {
-  const livePlaylistUrl = 'https://open.spotify.com/playlist/target-playlist?si=live-session';
+  const livePlaylistUrl = 'https://open.spotify.com/playlist/targetplaylist?si=live-session';
   const { app, calls, playback } = createApp({
     configuredPlaylist: 'spotify:playlist:configured-default',
     initialContext: livePlaylistUrl,
@@ -309,8 +309,8 @@ test('preflight matches a live playlist web URL by its Spotify ID and uses the c
   const result = await suite.preflight();
 
   assert.equal(result.playlistUri, playlistUri);
-  assert.equal(app.playlistId, 'target-playlist');
-  assert.equal(app.coordinator.playlistId, 'target-playlist');
+  assert.equal(app.playlistId, 'targetplaylist');
+  assert.equal(app.coordinator.playlistId, 'targetplaylist');
   assert.equal(app.playlistUri, playlistUri);
   assert.equal(playback.context.uri, livePlaylistUrl);
   assert.equal(calls.some(call => call.method === 'playPlaylistAt'), false);
