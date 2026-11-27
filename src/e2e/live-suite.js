@@ -10,7 +10,7 @@ function spotifyTrackUri(track) {
 
 function isPlaylistContext(_spotify, playback, playlistId) {
   if (playback?.context?.type !== 'playlist' || !playlistId) return false;
-  const match = String(playback.context.uri || '').match(/(?:spotify:playlist:|open\\.spotify\\.com\\/playlist\\/)([A-Za-z0-9]+)/i);
+  const match = String(playback.context.uri || '').match(/(?:spotify:playlist:|open[.]spotify[.]com\/playlist\/)([A-Za-z0-9]+)/i);
   return Boolean(match && match[1] === String(playlistId));
 }
 
