@@ -158,7 +158,7 @@ export class PlaybackCoordinator {
       }
 
       this.store.update(next => {
-        next.lastRequestUri = next.active.uri;
+        next.lastRequestUri = trackUri(current) || next.active.lastPlaybackUri || next.active.uri;
         next.active = null;
         next.mode = 'skipping';
       });
@@ -271,6 +271,7 @@ export class PlaybackCoordinator {
       if (!confirmed) throw new Error('Spotify accepted the play command but the requested track was not confirmed.');
       this.store.update(next => {
         if (next.active?.id === request.id) {
+          next.active.lastPlaybackUri = trackUri(confirmed) || request.uri;
           next.active.lastProgressMs = confirmed.progress_ms || 0;
           next.active.durationMs = confirmed.item?.duration_ms || request.durationMs || 0;
           next.mode = 'playing-request';
@@ -407,7 +408,7 @@ export class PlaybackCoordinator {
       const hasPending = state.pending.length > 0;
       this.logger.info('[community-playlist] Active viewer request completed; Spotify returned to the expected playlist continuation.');
       this.store.update(next => {
-        next.lastRequestUri = next.active.uri;
+        next.lastRequestUri = next.active.lastPlaybackUri || next.active.uri;
         next.active = null;
         if (!hasPending) next.snapshot = null;
         next.mode = 'idle';
@@ -421,6 +422,7 @@ export class PlaybackCoordinator {
       const duration = Number(playback.item?.duration_ms) || active.durationMs || 0;
       this.store.update(next => {
         if (!next.active || next.active.id !== active.id) return;
+        next.active.lastPlaybackUri = currentUri || next.active.lastPlaybackUri || next.active.uri;
         next.active.lastProgressMs = Math.max(next.active.lastProgressMs || 0, progress);
         next.active.durationMs = duration;
         next.mode = playback.is_playing ? 'playing-request' : 'paused-request';
@@ -436,7 +438,7 @@ export class PlaybackCoordinator {
 
   async completeActive() {
     this.store.update(state => {
-      state.lastRequestUri = state.active?.uri || state.lastRequestUri;
+      state.lastRequestUri = state.active?.lastPlaybackUri || state.active?.uri || state.lastRequestUri;
       state.active = null;
       state.mode = 'request-complete';
     });
@@ -461,7 +463,7 @@ export class PlaybackCoordinator {
       return;
     }
     const currentUri = trackUri(playback);
-    const allowedRequestUri = state.active?.uri || state.lastRequestUri;
+    const allowedRequestUri = state.active?.lastPlaybackUri || state.active?.uri || state.lastRequestUri;
     if (currentUri && currentUri !== allowedRequestUri && currentUri !== snapshot.nextTrackUri) {
       this.handoff('Playback changed manually before playlist restoration; leaving it untouched.');
       return;
@@ -533,6 +535,7 @@ export class PlaybackCoordinator {
 
     if (matchesActiveRequest && !(returnedToPlaylist && this.hasNaturallyCompleted(state.active))) {
       this.store.update(next => {
+        next.active.lastPlaybackUri = trackUri(playback) || next.active.lastPlaybackUri || next.active.uri;
         next.active.lastProgressMs = Math.max(next.active.lastProgressMs || 0, Number(playback.progress_ms) || 0);
         next.active.durationMs = Number(playback.item?.duration_ms) || next.active.durationMs || 0;
         next.mode = playback.is_playing ? 'playing-request' : 'paused-request';
