@@ -3,9 +3,10 @@
 ## User setup
 
 1. Open the signup page over HTTPS.
-2. Authorize the Twitch broadcaster account and Spotify account.
-3. After both providers show connected, choose Finish setup.
-4. On the completion page, use COPY to retrieve the OBS Browser Source URL and paste it into OBS.
+2. Authorize the Twitch broadcaster account. Setup loads that broadcaster's Custom Power-ups from Twitch.
+3. Select the enabled, in-stock Custom Power-up that requires viewer text input and should be used for song requests. The selection is saved by Twitch Power-up ID, not by its display name. Use Refresh list if you change Power-ups in Twitch while setup is open.
+4. Authorize the Spotify account. After both providers are connected and a Power-up is selected, choose Finish setup.
+5. On the completion page, use COPY to retrieve the OBS Browser Source URL and paste it into OBS.
 
 The broadcaster does not provide a playlist URL. At runtime, the controller discovers the playlist already playing on the active Spotify Connect device and returns to that playlist after viewer requests. Start the playlist you want to use before accepting requests.
 
@@ -29,3 +30,8 @@ Copy .env.example to .env and enter the two public client IDs. Run docker compos
 - The generated OBS URL is a bearer credential. Clipboard history, OBS settings exports, screenshots, browser sync, or accidental sharing can expose it.
 - The overlay must refresh directly with provider APIs and store rotated tokens locally. Clearing Browser Source storage after token rotation can require reauthorization.
 - Revoke provider access in Twitch and Spotify if the URL is exposed. Account management and automated URL rotation are not included in this initial flow.
+
+
+## Revoking a hosted setup
+
+The completion page includes **Revoke access & start over**. Use it if the generated OBS URL was exposed or the setup needs to be replaced. The action revokes the Twitch access token, deletes the encrypted server-side authorization record (including the Spotify refresh token), and invalidates the setup management token. Twitch revocation is performed through Twitch's OAuth revoke endpoint. Spotify does not provide a public OAuth token-revocation endpoint; after the action opens [Spotify account app access](https://www.spotify.com/account/apps/), disconnect Community Playlist there as well. Do not consider the Spotify authorization fully revoked until that disconnect is complete. Then return to setup and authorize both accounts again.
