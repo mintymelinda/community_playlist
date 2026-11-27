@@ -8,6 +8,15 @@ function spotifyTrackUri(track) {
   return track?.linked_from?.uri || track?.uri || null;
 }
 
+function isPlaylistContext(spotify, playback, playlistId) {
+  if (playback?.context?.type !== 'playlist' || !playlistId) return false;
+  try {
+    return spotify.extractPlaylistId(playback.context.uri) === String(playlistId);
+  } catch {
+    return false;
+  }
+}
+
 export function matchesPlaylistContinuationQueue({ playlistTracks, restoredOffset, upcomingTracks }) {
   const nextPlaylistTrack = (playlistTracks || [])
     .slice(Number(restoredOffset) + 1)
@@ -102,9 +111,12 @@ export function createLiveE2ESuite(app) {
     const activePlaylistUri = initialPlayback?.context?.type === 'playlist'
       ? initialPlayback.context.uri
       : '';
-    const playlistUri = activePlaylistUri || app.config.playlistUri || '';
-    assert(playlistUri, 'Set SPOTIFY_PLAYLIST_URI or start a Spotify playlist first so the test can use the current playlist.');
-    const playlistId = app.spotify.extractPlaylistId(playlistUri);
+    const selectedPlaylist = activePlaylistUri || app.config.playlistUri || '';
+    assert(selectedPlaylist, 'Set SPOTIFY_PLAYLIST_URI or start a Spotify playlist first so the test can use the current playlist.');
+    const playlistId = app.spotify.extractPlaylistId(selectedPlaylist);
+    // Use one canonical Spotify URI for playback commands and the playlist's
+    // stable ID for identity checks. A pasted web URL is never a match key.
+    const playlistUri = 'spotify:playlist:' + playlistId;
 
     app.playlistUri = playlistUri;
     app.playlistId = playlistId;
@@ -134,8 +146,7 @@ export function createLiveE2ESuite(app) {
       await app.spotify.setRepeat('off', deviceId);
 
       const playlistAlreadyLoaded =
-        initialPlayback?.context?.type === 'playlist' &&
-        initialPlayback.context.uri === playlistUri;
+        isPlaylistContext(app.spotify, initialPlayback, playlistId);
 
       const playlistItems = await app.spotify.getPlaylistItems(playlistId);
       const firstPlayableOffset = playlistItems.findIndex(item => item?.uri);
@@ -150,8 +161,7 @@ export function createLiveE2ESuite(app) {
       await waitFor('the selected playlist to be playing with shuffle and repeat off', async () => {
         const playback = await app.spotify.getPlaybackState();
         return playback?.device?.id === deviceId &&
-          playback?.context?.type === 'playlist' &&
-          playback.context.uri === playlistUri &&
+          isPlaylistContext(app.spotify, playback, playlistId) &&
           playback.is_playing &&
           playback.shuffle_state === false &&
           playback.repeat_state === 'off'
@@ -331,11 +341,11 @@ export function createLiveE2ESuite(app) {
         let followingQueueMatch = false;
         if (!directTrackMatch && snapshot.followingTrackUri &&
             playback?.device?.id === snapshot.deviceId &&
-            playback?.context?.uri === playlistUri && playback?.is_playing === true) {
+            isPlaylistContext(app.spotify, playback, app.coordinator.playlistId) && playback?.is_playing === true) {
           const upcoming = await app.spotify.getQueue();
           followingQueueMatch = spotifyTrackUri(upcoming?.[0]) === snapshot.followingTrackUri;
         }
-        return playback?.context?.uri === playlistUri &&
+        return isPlaylistContext(app.spotify, playback, app.coordinator.playlistId) &&
           (directTrackMatch || followingQueueMatch) &&
           current.mode === 'idle' &&
           !current.active &&
@@ -590,7 +600,7 @@ export function createLiveE2ESuite(app) {
           app.spotify.getPlaybackState(),
           Promise.resolve(app.store.get())
         ]);
-        return playback?.context?.uri === playlistUri &&
+        return isPlaylistContext(app.spotify, playback, app.coordinator.playlistId) &&
           playback?.item?.uri === snapshot.nextTrackUri &&
           state.mode === 'idle' &&
           !state.active &&
