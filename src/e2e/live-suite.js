@@ -317,11 +317,19 @@ export function createLiveE2ESuite(app) {
           app.spotify.getPlaybackState(),
           Promise.resolve(app.store.get())
         ]);
+        const directTrackMatch = await playbackMatchesTrack(playback, {
+          uri: snapshot.nextTrackUri,
+          isrc: snapshot.nextTrackIsrc || null
+        });
+        let followingQueueMatch = false;
+        if (!directTrackMatch && snapshot.followingTrackUri &&
+            playback?.device?.id === snapshot.deviceId &&
+            playback?.context?.uri === playlistUri && playback?.is_playing === true) {
+          const upcoming = await app.spotify.getQueue();
+          followingQueueMatch = spotifyTrackUri(upcoming?.[0]) === snapshot.followingTrackUri;
+        }
         return playback?.context?.uri === playlistUri &&
-          await playbackMatchesTrack(playback, {
-            uri: snapshot.nextTrackUri,
-            isrc: snapshot.nextTrackIsrc || null
-          }) &&
+          (directTrackMatch || followingQueueMatch) &&
           current.mode === 'idle' &&
           !current.active &&
           current.pending.length === 0 &&
