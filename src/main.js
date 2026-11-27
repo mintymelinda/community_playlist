@@ -15,9 +15,6 @@ function validateConfig(config) {
       throw new Error('Set ' + key + ' in config.local.js before starting the controller.');
     }
   }
-  if (!config.e2eMode && (!config.playlistUri || String(config.playlistUri).includes('YOUR_'))) {
-    throw new Error('Set playlistUri in config.local.js before starting the controller.');
-  }
   const redirect = new URL(config.spotifyRedirectUri);
   if (!config.provisioned && (redirect.origin !== location.origin || redirect.pathname !== location.pathname || redirect.search || redirect.hash)) {
     throw new Error('spotifyRedirectUri must exactly match the current page URL, without a query string or fragment.');

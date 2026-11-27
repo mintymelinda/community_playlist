@@ -113,6 +113,25 @@ const request = (id, track, requester = 'viewer') => ({
   queuedAt: Date.now()
 });
 
+test('discovers the broadcaster active playlist when no playlist is configured', async () => {
+  const spotify = new FakeSpotify();
+  const store = new QueueStore(new MemoryStorage());
+  const coordinator = new PlaybackCoordinator({
+    spotify, store, playlistUri: '', playlistId: '',
+    timers: { setInterval: () => 1, clearInterval: () => {} },
+    logger: { info() {}, warn() {}, error() {} }
+  });
+
+  await coordinator.enqueue(request('discover-active-playlist', tracks[2]));
+
+  assert.equal(coordinator.playlistId, 'playlist1');
+  assert.equal(coordinator.playlistUri, playlistUri);
+  assert.equal(store.get().mode, 'waiting-for-playlist');
+  assert.equal(store.get().snapshot.playlistUri, playlistUri);
+  assert.equal(store.get().snapshot.nextTrackUri, tracks[1].uri);
+  assert.deepEqual(spotify.played, []);
+});
+
 test('waits for the current playlist track to finish before starting the request FIFO', async () => {
   const { spotify, store, coordinator } = createCoordinator({ autoAdvanceToNextTrack: false });
   const originalTrack = clone(spotify.current.item);

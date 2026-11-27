@@ -5,7 +5,8 @@ export default {
   spotifyClientId: "YOUR_SPOTIFY_CLIENT_ID",
   // Must exactly match the Spotify app redirect URI, including path and trailing slash.
   spotifyRedirectUri: "https://example.com/community-playlist/",
-  playlistUri: "spotify:playlist:YOUR_PLAYLIST_ID",
+  // Optional: blank automatically follows the playlist already playing on Spotify.
+  playlistUri: "",
   // Optional: leave empty to use the broadcaster identified by Twitch OAuth.
   broadcasterId: "",
   // Optional: leave empty only when exactly one enabled text-input Custom Power-up exists.

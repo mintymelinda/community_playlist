@@ -1,10 +1,9 @@
 import { SerialExecutor } from '../lib/serial.js';
 import { resolveNextPlaylistOffset } from './position.js';
 
-function isPlaylistContext(_spotify, playback, playlistId) {
-  if (playback?.context?.type !== 'playlist' || !playlistId) return false;
-  const match = String(playback.context.uri || '').match(/(?:spotify:playlist:|open[.]spotify[.]com\/playlist\/)([A-Za-z0-9]+)/i);
-  return Boolean(match && match[1] === String(playlistId));
+function playlistIdFromUri(uri) {
+  const match = String(uri || '').match(/(?:spotify:playlist:|open[.]spotify[.]com\/playlist\/)([A-Za-z0-9]+)/i);
+  return match?.[1] || '';
 }
 
 function trackUri(state) {
@@ -182,13 +181,24 @@ export class PlaybackCoordinator {
     });
   }
 
+  matchesPlaylistContext(playback) {
+    if (playback?.context?.type !== 'playlist') return false;
+    const contextId = playlistIdFromUri(playback.context.uri);
+    if (!contextId || (this.playlistId && contextId !== this.playlistId)) return false;
+    if (!this.playlistId) {
+      this.playlistId = contextId;
+      this.playlistUri = 'spotify:playlist:' + contextId;
+    }
+    return true;
+  }
+
   async resume() {
     return this.serial.run(async () => {
       const state = this.store.get();
       if (state.mode !== 'handoff') return false;
       const current = await this.spotify.getPlaybackState();
-      if (!current || !isPlaylistContext(this.spotify, current, this.playlistId) || !current.is_playing) {
-        throw new Error('Resume requires the configured playlist to be actively playing again.');
+      if (!current || !this.matchesPlaylistContext(current) || !current.is_playing) {
+        throw new Error('Resume requires the broadcaster\'s active Spotify playlist to be playing again.');
       }
       this.store.update(next => {
         next.mode = 'idle';
@@ -203,15 +213,15 @@ export class PlaybackCoordinator {
   async captureSnapshot() {
     const playback = await this.spotify.getPlaybackState();
     if (!playback || !playback.is_playing) {
-      throw new Error('Start the configured playlist on Spotify before accepting requests.');
+      throw new Error('Start a Spotify playlist on the active Connect device before accepting requests.');
     }
     if (!playback.device?.id) throw new Error('Spotify did not report an active playback device.');
     const deviceId = this.configuredDeviceId || playback.device.id;
     if (playback.device.id !== deviceId) {
       throw new Error('The configured Spotify device is not the active playback device.');
     }
-    if (playback.context?.type !== 'playlist' || !isPlaylistContext(this.spotify, playback, this.playlistId)) {
-      throw new Error('The configured playlist must be the active Spotify playback context.');
+    if (!this.matchesPlaylistContext(playback)) {
+      throw new Error('A Spotify playlist must be the active playback context. Start the playlist you want to return to after viewer requests.');
     }
     if (playback.repeat_state !== 'off') {
       throw new Error('Turn Spotify repeat off before using viewer requests.');
@@ -382,7 +392,7 @@ export class PlaybackCoordinator {
         }
         let matchedByFollowingQueue = false;
         if (expectedContextUri && expectedFollowingUri &&
-            state?.device?.id === deviceId && isPlaylistContext(this.spotify, state, this.playlistId) &&
+            state?.device?.id === deviceId && this.matchesPlaylistContext(state) &&
             state?.is_playing === true && Date.now() >= nextQueueCheckAt) {
           nextQueueCheckAt = Date.now() + Math.max(1000, this.playbackConfirmationPollMs);
           try {
@@ -393,7 +403,7 @@ export class PlaybackCoordinator {
           }
         }
         const matchedByPlaylistContext = allowAnyPlaylistTrack && Boolean(trackUri(state)) &&
-          state?.device?.id === deviceId && isPlaylistContext(this.spotify, state, this.playlistId);
+          state?.device?.id === deviceId && this.matchesPlaylistContext(state);
         if (state?.device?.id === deviceId &&
             (trackUri(state) === uri || matchedByIsrc || matchedByFollowingQueue || matchedByPlaylistContext) &&
             state.is_playing === true) {
@@ -460,7 +470,7 @@ export class PlaybackCoordinator {
     }
 
     const snapshotPlaylistUri = snapshot.playlistUri || this.playlistUri;
-    if (!isPlaylistContext(this.spotify, playback, this.playlistId)) {
+    if (!this.matchesPlaylistContext(playback)) {
       this.handoff('Spotify playback left the saved playlist before the current track finished. Requests were preserved.');
       return;
     }
@@ -551,7 +561,7 @@ export class PlaybackCoordinator {
     const currentUri = trackUri(playback);
     const returnedToPlaylist = snapshot.nextTrackUri &&
       currentUri === snapshot.nextTrackUri &&
-      isPlaylistContext(this.spotify, playback, this.playlistId);
+      this.matchesPlaylistContext(playback);
     const matchesActiveRequest = await this.trackMatchesRequest(playback, active);
 
     // A viewer may request the same recording that is next in the playlist.
@@ -637,7 +647,7 @@ export class PlaybackCoordinator {
       return;
     }
     const snapshotPlaylistUri = snapshot.playlistUri || this.playlistUri;
-    if (currentUri === snapshot.nextTrackUri && isPlaylistContext(this.spotify, playback, this.playlistId)) {
+    if (currentUri === snapshot.nextTrackUri && this.matchesPlaylistContext(playback)) {
       this.store.update(next => {
         next.snapshot = null;
         next.mode = 'idle';
@@ -674,6 +684,10 @@ export class PlaybackCoordinator {
 
   async reconcile() {
     const state = this.store.get();
+    if (!this.playlistId && state.snapshot?.playlistUri) {
+      this.playlistId = playlistIdFromUri(state.snapshot.playlistUri);
+      if (this.playlistId) this.playlistUri = 'spotify:playlist:' + this.playlistId;
+    }
     if (!state.active) {
       if (state.snapshot && state.mode === 'waiting-for-playlist' && state.pending.length) {
         // A restart must preserve the wait rather than discard the captured
@@ -709,7 +723,7 @@ export class PlaybackCoordinator {
     const playback = await this.spotify.getPlaybackState();
     const returnedToPlaylist = playback?.device?.id === state.snapshot.deviceId &&
       trackUri(playback) === state.snapshot.nextTrackUri &&
-      isPlaylistContext(this.spotify, playback, this.playlistId);
+      this.matchesPlaylistContext(playback);
     const matchesActiveRequest = playback?.device?.id === state.snapshot.deviceId &&
       await this.trackMatchesRequest(playback, state.active);
 
