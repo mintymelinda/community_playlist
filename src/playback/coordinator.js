@@ -119,6 +119,21 @@ export class PlaybackCoordinator {
     return progressMs >= durationMs - completionWindowMs;
   }
 
+  async getTrackMetadata(uri) {
+    if (!this.trackMetadataCache.has(uri)) {
+      const lookup = Promise.resolve()
+        .then(() => this.spotify.getTrack(uri))
+        .catch(error => {
+          this.logger.warn('[community-playlist] Could not resolve Spotify playable-track metadata.', {
+            playableUri: uri, error: error.message
+          });
+          throw error;
+        });
+      this.trackMetadataCache.set(uri, lookup);
+    }
+    return this.trackMetadataCache.get(uri);
+  }
+
   async trackMatchesRequest(state, request) {
     if (!state?.item || !request) return false;
     if (trackUri(state) === request.uri) return true;
@@ -131,18 +146,12 @@ export class PlaybackCoordinator {
     // does not repeatedly hit the metadata endpoint.
     const playableUri = state.item.uri;
     if (!playableUri) return false;
-    if (!this.trackMetadataCache.has(playableUri)) {
-      const lookup = Promise.resolve()
-        .then(() => this.spotify.getTrack(playableUri))
-        .catch(error => {
-          this.logger.warn('[community-playlist] Could not resolve Spotify playable-track metadata.', {
-            playableUri, error: error.message
-          });
-          return null;
-        });
-      this.trackMetadataCache.set(playableUri, lookup);
+    let playableTrack = null;
+    try {
+      playableTrack = await this.getTrackMetadata(playableUri);
+    } catch {
+      return false;
     }
-    const playableTrack = await this.trackMetadataCache.get(playableUri);
     const observedIsrc = String(playableTrack?.isrc || '').trim().toUpperCase();
     return Boolean(observedIsrc && observedIsrc === expectedIsrc);
   }
@@ -214,6 +223,8 @@ export class PlaybackCoordinator {
       upcomingTracks: upcoming,
       shuffle: playback.shuffle_state === true
     });
+    const followingTrackUri = upcoming[1]?.uri ||
+      playlistTracks.slice(position.nextOffset + 1).find(item => item?.uri)?.uri || null;
     let nextTrackIsrc = playlistTracks[position.nextOffset]?.isrc || null;
     if (!nextTrackIsrc && position.nextTrackUri) {
       try {
@@ -233,6 +244,7 @@ export class PlaybackCoordinator {
       nextOffset: position.nextOffset,
       nextTrackUri: position.nextTrackUri,
       nextTrackIsrc,
+      followingTrackUri,
       playlistLength: playlistTracks.length,
       capturedAt: Date.now()
     };
@@ -315,13 +327,20 @@ export class PlaybackCoordinator {
   }
 
   async waitForTrack(uri, deviceId, context = {}) {
-    const { requestId = null, playAttemptId = null, expectedIsrc = null } = context;
+    const {
+      requestId = null,
+      playAttemptId = null,
+      expectedIsrc = null,
+      expectedContextUri = null,
+      expectedFollowingUri = null
+    } = context;
     this.logger.info('[community-playlist] Playback confirmation started.', {
       controllerInstance: this.instanceId, playAttemptId, requestId, expectedUri: uri, deviceId
     });
     const deadline = Date.now() + this.playbackConfirmationTimeoutMs;
     let lastState = null;
     let lastObservedIsrc = null;
+    let lastMetadataError = null;
     let lastError = null;
 
     while (Date.now() < deadline) {
@@ -330,14 +349,33 @@ export class PlaybackCoordinator {
         const observedIsrc = state?.item?.external_ids?.isrc || null;
         const matchedByIsrc = Boolean(expectedIsrc && state?.item?.uri !== uri &&
           await this.trackMatchesRequest(state, { uri, isrc: expectedIsrc }));
-        if (matchedByIsrc) {
-          const metadata = await this.trackMetadataCache.get(state.item.uri);
-          lastObservedIsrc = metadata?.isrc || observedIsrc;
+        if (state?.item?.uri && state.item.uri !== uri) {
+          try {
+            const metadata = await this.getTrackMetadata(state.item.uri);
+            lastObservedIsrc = metadata?.isrc || observedIsrc;
+          } catch (error) {
+            lastMetadataError = error.message;
+          }
+        } else {
+          lastObservedIsrc = observedIsrc;
         }
-        if (state?.device?.id === deviceId && (trackUri(state) === uri || matchedByIsrc) && state.is_playing === true) {
+        let matchedByFollowingQueue = false;
+        if (expectedContextUri && expectedFollowingUri &&
+            state?.device?.id === deviceId && state?.context?.uri === expectedContextUri &&
+            state?.is_playing === true) {
+          const queue = await this.spotify.getQueue();
+          matchedByFollowingQueue = queue?.[0]?.uri === expectedFollowingUri;
+        }
+        if (state?.device?.id === deviceId &&
+            (trackUri(state) === uri || matchedByIsrc || matchedByFollowingQueue) &&
+            state.is_playing === true) {
           this.logger.info('[community-playlist] Playback confirmation matched.', {
             controllerInstance: this.instanceId, playAttemptId, requestId,
-            expectedUri: uri, observedUri: trackUri(state), deviceId, matchedBy: matchedByIsrc && trackUri(state) !== uri ? 'isrc' : 'uri', expectedIsrc, observedIsrc,
+            expectedUri: uri, observedUri: trackUri(state), deviceId,
+            matchedBy: matchedByFollowingQueue ? 'playlist-context-and-following-queue' :
+              matchedByIsrc && trackUri(state) !== uri ? 'isrc' : 'uri',
+            expectedIsrc, observedIsrc: lastObservedIsrc,
+            expectedContextUri, expectedFollowingUri,
             progressMs: state.progress_ms ?? null
           });
           return state;
@@ -365,6 +403,7 @@ export class PlaybackCoordinator {
       '; last observed track ' + observedUri + ' (playable URI ' + playableUri +
       ') on device ' + observedDevice +
       '; observed_isrc=' + String(lastObservedIsrc || lastState?.item?.external_ids?.isrc || 'unresolved') +
+      '; observed_metadata_error=' + String(lastMetadataError || 'none') +
       '; is_playing=' + String(lastState?.is_playing ?? 'unknown') +
       '; progress_ms=' + String(lastState?.progress_ms ?? 'unknown') +
       '; context=' + String(lastState?.context?.uri || 'none') +
@@ -504,7 +543,9 @@ export class PlaybackCoordinator {
 
     await this.spotify.playPlaylistAt(snapshotPlaylistUri, snapshot.nextOffset, snapshot.deviceId);
     const restored = await this.waitForTrack(snapshot.nextTrackUri, snapshot.deviceId, {
-      expectedIsrc: snapshot.nextTrackIsrc || null
+      expectedIsrc: snapshot.nextTrackIsrc || null,
+      expectedContextUri: snapshotPlaylistUri,
+      expectedFollowingUri: snapshot.followingTrackUri || null
     });
     if (!restored) throw new Error('Spotify did not confirm the expected playlist continuation.');
     this.store.update(next => {
