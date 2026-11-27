@@ -184,7 +184,7 @@ function createTwitchAuth(existingCredential) {
         '',
         '1. Open [' + info.verificationUri + '](' + info.verificationUri + ').',
         '2. Enter this one-time code: **' + info.userCode + '**.',
-        '3. Approve access using the broadcaster account configured for this channel.',
+        '3. Approve access using the Twitch account for the channel being monitored.',
         '',
         'CI is waiting for approval and will continue automatically.',
         ''
@@ -196,13 +196,12 @@ function createTwitchAuth(existingCredential) {
 }
 
 function shouldReauthorizeTwitch(error) {
-  return /invalid refresh token|invalid_grant|missing required scopes|different Client ID|different account than TWITCH_BROADCASTER_ID/i.test(error?.message || '');
+  return /invalid refresh token|invalid_grant|missing required scopes|different Client ID|different Twitch channel account/i.test(error?.message || '');
 }
 
 function validateTwitchIdentity(identity) {
-  const expectedBroadcaster = String(process.env.TWITCH_BROADCASTER_ID || '').trim();
-  if (expectedBroadcaster && String(identity?.user_id) !== expectedBroadcaster) {
-    throw new Error('The saved Twitch authorization belongs to a different account than TWITCH_BROADCASTER_ID. Reauthorize Twitch using the configured broadcaster account.');
+  if (!identity?.user_id || !identity?.login) {
+    throw new Error('Twitch authorization did not identify the channel account. Reauthorize Twitch.');
   }
   return identity;
 }
