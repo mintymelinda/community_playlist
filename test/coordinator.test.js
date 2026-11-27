@@ -103,6 +103,49 @@ test('plays viewer requests FIFO ahead of the saved playlist continuation', asyn
   assert.equal(spotify.current.item.uri, tracks[1].uri);
 });
 
+
+test('restores the playlist after skipping a request that Spotify played through an ISRC relink', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  const requestedUri = 'spotify:track:requested-track-id';
+  const playableUri = 'spotify:track:market-playable-track-id';
+  const requestedIsrc = 'USRC17607839';
+  const relinkedRequest = {
+    id: 'relinked-request',
+    uri: requestedUri,
+    title: 'Relinked request',
+    durationMs: 180000,
+    isrc: requestedIsrc,
+    requester: 'viewer',
+    queuedAt: Date.now()
+  };
+
+  spotify.playTrack = async (uri, targetDevice) => {
+    spotify.played.push({ uri, targetDevice });
+    spotify.current = {
+      device: { id: targetDevice },
+      context: null,
+      item: { uri: playableUri, name: 'Relinked request', duration_ms: 180000 },
+      is_playing: true,
+      progress_ms: 0
+    };
+  };
+  spotify.getTrack = async uri => {
+    assert.equal(uri, playableUri);
+    return { uri: playableUri, isrc: requestedIsrc };
+  };
+
+  await coordinator.enqueue(relinkedRequest);
+
+  assert.equal(store.get().active.id, relinkedRequest.id);
+  assert.equal(store.get().active.lastPlaybackUri, playableUri);
+  assert.equal(await coordinator.skip(), true);
+  assert.equal(store.get().mode, 'idle');
+  assert.equal(store.get().active, null);
+  assert.equal(store.get().snapshot, null);
+  assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
+  assert.equal(spotify.current.item.uri, tracks[1].uri);
+});
+
 test('does not confuse a stale playlist-context read with natural completion of the active viewer request', async () => {
   const { spotify, store, coordinator } = createCoordinator();
   await coordinator.enqueue(request('request-x', { ...tracks[2], name: 'X' }));
