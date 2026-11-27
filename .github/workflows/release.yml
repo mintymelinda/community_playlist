@@ -47,8 +47,8 @@ jobs:
           PACKAGE_DIR="community-playlist-${TAG}"
           STAGING="dist/${PACKAGE_DIR}"
           mkdir -p "$STAGING"
-          cp index.html config.example.js README.md "$STAGING/"
-          cp -R src docs "$STAGING/"
+          cp index.html overlay.html config.example.js README.md Dockerfile docker-compose.yml .dockerignore package.json "$STAGING/"
+          cp -R src docs auth-service "$STAGING/"
           (
             cd dist
             zip -qr "${PACKAGE_DIR}.zip" "$PACKAGE_DIR"
