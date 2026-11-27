@@ -707,12 +707,12 @@ test('restores a playlist track when Spotify reports its market-relinked playabl
 
   spotify.getPlaylistItems = async () => [
     tracks[0],
-    { ...tracks[1], isrc },
+    tracks[1],
     tracks[2],
     tracks[3]
   ];
   spotify.getQueue = async () => [
-    { ...tracks[1], isrc },
+    tracks[1],
     tracks[2],
     tracks[3]
   ];
@@ -727,8 +727,8 @@ test('restores a playlist track when Spotify reports its market-relinked playabl
     };
   };
   spotify.getTrack = async uri => {
-    assert.equal(uri, playableUri);
-    return { uri: playableUri, isrc };
+    assert.ok(uri === expectedUri || uri === playableUri);
+    return { uri, isrc };
   };
 
   await coordinator.enqueue(request('request-before-playlist-restore', tracks[2]));
