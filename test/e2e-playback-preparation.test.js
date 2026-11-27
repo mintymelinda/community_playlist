@@ -28,7 +28,7 @@ function createApp({
   const playback = {
     device: { id: deviceId },
     context: initialContext ? {
-      type: /(?:spotify:playlist:|open\\.spotify\\.com\\/playlist\\/)/i.test(initialContext) ? 'playlist' : 'album',
+      type: (initialContext.startsWith('spotify:playlist:') || initialContext.includes('open.spotify.com/playlist/')) ? 'playlist' : 'album',
       uri: initialContext
     } : null,
     item: tracks[1],
@@ -48,7 +48,9 @@ function createApp({
     async getQueue() { return [tracks[2], tracks[3]]; },
     async resolveTrack(input) { return input === 'test-x' ? resolvedX : resolvedY; },
     extractPlaylistId(uri) {
-      const match = String(uri).match(/(?:spotify:playlist:|open[.]spotify[.]com\\/playlist\\/)([A-Za-z0-9]+)/i);
+      const value = String(uri);
+      const match = value.match(/spotify:playlist:([A-Za-z0-9]+)/i) ||
+        value.match(/open[.]spotify[.]com[/]playlist[/]([A-Za-z0-9]+)/i);
       if (!match) throw new Error('Invalid playlist URI');
       return match[1];
     },
