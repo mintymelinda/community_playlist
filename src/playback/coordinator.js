@@ -341,6 +341,8 @@ export class PlaybackCoordinator {
     let lastState = null;
     let lastObservedIsrc = null;
     let lastMetadataError = null;
+    let lastQueueError = null;
+    let nextQueueCheckAt = 0;
     let lastError = null;
 
     while (Date.now() < deadline) {
@@ -362,9 +364,14 @@ export class PlaybackCoordinator {
         let matchedByFollowingQueue = false;
         if (expectedContextUri && expectedFollowingUri &&
             state?.device?.id === deviceId && state?.context?.uri === expectedContextUri &&
-            state?.is_playing === true) {
-          const queue = await this.spotify.getQueue();
-          matchedByFollowingQueue = queue?.[0]?.uri === expectedFollowingUri;
+            state?.is_playing === true && Date.now() >= nextQueueCheckAt) {
+          nextQueueCheckAt = Date.now() + Math.max(1000, this.playbackConfirmationPollMs);
+          try {
+            const queue = await this.spotify.getQueue();
+            matchedByFollowingQueue = queue?.[0]?.uri === expectedFollowingUri;
+          } catch (error) {
+            lastQueueError = error.message;
+          }
         }
         if (state?.device?.id === deviceId &&
             (trackUri(state) === uri || matchedByIsrc || matchedByFollowingQueue) &&
@@ -404,6 +411,7 @@ export class PlaybackCoordinator {
       ') on device ' + observedDevice +
       '; observed_isrc=' + String(lastObservedIsrc || lastState?.item?.external_ids?.isrc || 'unresolved') +
       '; observed_metadata_error=' + String(lastMetadataError || 'none') +
+      '; following_queue_error=' + String(lastQueueError || 'none') +
       '; is_playing=' + String(lastState?.is_playing ?? 'unknown') +
       '; progress_ms=' + String(lastState?.progress_ms ?? 'unknown') +
       '; context=' + String(lastState?.context?.uri || 'none') +
