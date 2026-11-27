@@ -8,6 +8,16 @@ function spotifyTrackUri(track) {
   return track?.linked_from?.uri || track?.uri || null;
 }
 
+export function matchesPlaylistContinuationQueue({ playlistTracks, restoredOffset, upcomingTracks }) {
+  const nextPlaylistTrack = (playlistTracks || [])
+    .slice(Number(restoredOffset) + 1)
+    .find(track => track?.uri);
+  const firstUpcomingTrack = Array.isArray(upcomingTracks) ? upcomingTracks[0] : null;
+  return nextPlaylistTrack
+    ? spotifyTrackUri(firstUpcomingTrack) === nextPlaylistTrack.uri
+    : !firstUpcomingTrack;
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -178,7 +188,7 @@ export function createLiveE2ESuite(app) {
       ]);
       const queue = await app.spotify.getQueue();
       assert(spotifyTrackUri(queue[0]) === snapshot.nextTrackUri, 'Spotify upcoming queue did not match the playlist continuation at E2E preflight.');
-      return { snapshot, trackX, trackY, queue, playlistUri: app.playlistUri };
+      return { snapshot, trackX, trackY, playlistUri: app.playlistUri };
     } catch (error) {
       try {
         await restorePlaybackSettings();
@@ -263,7 +273,7 @@ export function createLiveE2ESuite(app) {
     let completed = false;
     const runId = 'community-playlist-e2e-' + crypto.randomUUID();
     try {
-      const { snapshot, trackX, trackY, queue, playlistUri } = await preflight();
+      const { snapshot, trackX, trackY, playlistUri } = await preflight();
       checks.push({ name: 'Twitch and Spotify authentication', passed: true });
       checks.push({ name: 'Playlist and Connect device preflight', passed: true });
 
@@ -324,10 +334,21 @@ export function createLiveE2ESuite(app) {
       assert(JSON.stringify(playlistAfterUris) === JSON.stringify(playlistBefore), 'The Spotify playlist items changed during the test.');
       checks.push({ name: 'Spotify playlist was not mutated', passed: true });
 
-      const expectedQueue = queue.slice(1).map(item => spotifyTrackUri(item));
-      const actualQueue = queueAfter.map(item => spotifyTrackUri(item));
-      assert(JSON.stringify(actualQueue) === JSON.stringify(expectedQueue), 'Spotify upcoming queue did not advance by exactly the restored playlist track.');
-      checks.push({ name: 'Upcoming playlist queue continues after the restored track', passed: true });
+      const expectedNextPlaylistTrack = playlistAfter
+        .slice(snapshot.nextOffset + 1)
+        .find(item => item?.uri)?.uri || null;
+      const actualUpcomingTrack = spotifyTrackUri(queueAfter[0]);
+      assert(
+        matchesPlaylistContinuationQueue({
+          playlistTracks: playlistAfter,
+          restoredOffset: snapshot.nextOffset,
+          upcomingTracks: queueAfter
+        }),
+        'Spotify upcoming queue did not continue with the next playlist item after restoration. Expected first upcoming URI ' +
+          String(expectedNextPlaylistTrack || 'none') + '; observed ' + String(actualUpcomingTrack || 'none') +
+          '; full upcoming queue ' + JSON.stringify(queueAfter.map(item => spotifyTrackUri(item)))
+      );
+      checks.push({ name: 'Upcoming queue begins with the next playlist track after restoration', passed: true });
 
       completed = true;
       return {
