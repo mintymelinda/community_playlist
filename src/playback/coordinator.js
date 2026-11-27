@@ -349,7 +349,8 @@ export class PlaybackCoordinator {
       playAttemptId = null,
       expectedIsrc = null,
       expectedContextUri = null,
-      expectedFollowingUri = null
+      expectedFollowingUri = null,
+      allowAnyPlaylistTrack = false
     } = context;
     this.logger.info('[community-playlist] Playback confirmation started.', {
       controllerInstance: this.instanceId, playAttemptId, requestId, expectedUri: uri, deviceId
@@ -390,14 +391,17 @@ export class PlaybackCoordinator {
             lastQueueError = error.message;
           }
         }
+        const matchedByPlaylistContext = allowAnyPlaylistTrack && Boolean(trackUri(state)) &&
+          state?.device?.id === deviceId && isPlaylistContext(this.spotify, state, this.playlistId);
         if (state?.device?.id === deviceId &&
-            (trackUri(state) === uri || matchedByIsrc || matchedByFollowingQueue) &&
+            (trackUri(state) === uri || matchedByIsrc || matchedByFollowingQueue || matchedByPlaylistContext) &&
             state.is_playing === true) {
           this.logger.info('[community-playlist] Playback confirmation matched.', {
             controllerInstance: this.instanceId, playAttemptId, requestId,
             expectedUri: uri, observedUri: trackUri(state), deviceId,
-            matchedBy: matchedByFollowingQueue ? 'playlist-context-and-following-queue' :
-              matchedByIsrc && trackUri(state) !== uri ? 'isrc' : 'uri',
+            matchedBy: matchedByPlaylistContext ? 'playlist-context-shuffle-resume' :
+              matchedByFollowingQueue ? 'playlist-context-and-following-queue' :
+                matchedByIsrc && trackUri(state) !== uri ? 'isrc' : 'uri',
             expectedIsrc, observedIsrc: lastObservedIsrc,
             expectedContextUri, expectedFollowingUri,
             progressMs: state.progress_ms ?? null
@@ -644,7 +648,8 @@ export class PlaybackCoordinator {
     const restored = await this.waitForTrack(snapshot.nextTrackUri, snapshot.deviceId, {
       expectedIsrc: snapshot.nextTrackIsrc || null,
       expectedContextUri: snapshotPlaylistUri,
-      expectedFollowingUri: snapshot.followingTrackUri || null
+      expectedFollowingUri: snapshot.followingTrackUri || null,
+      allowAnyPlaylistTrack: snapshot.shuffle === true
     });
     if (!restored) throw new Error('Spotify did not confirm the expected playlist continuation.');
     this.store.update(next => {
