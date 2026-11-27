@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLiveE2ESuite, playbackTrackUri } from '../src/e2e/live-suite.js';
+import { createLiveE2ESuite, matchesPlaylistContinuationQueue, playbackTrackUri } from '../src/e2e/live-suite.js';
 import { MemoryStorage, QueueStore } from '../src/lib/queue-store.js';
 
 const playlistUri = 'spotify:playlist:target-playlist';
@@ -210,6 +210,67 @@ test('preflight requires a configured or currently loaded playlist context', asy
   const { app } = createApp({ configuredPlaylist: '', initialContext: null });
   const suite = createLiveE2ESuite(app);
   await assert.rejects(suite.preflight(), /set SPOTIFY_PLAYLIST_URI or start a Spotify playlist first/i);
+});
+
+test('restored playlist continuation checks the next playlist item without requiring full queue equality', () => {
+  const playlist = [
+    { uri: 'spotify:track:one' },
+    { uri: 'spotify:track:restored' },
+    { uri: 'spotify:track:next' },
+    { uri: 'spotify:track:later' }
+  ];
+
+  assert.equal(matchesPlaylistContinuationQueue({
+    playlistTracks: playlist,
+    restoredOffset: 1,
+    upcomingTracks: [
+      { uri: 'spotify:track:next' },
+      { uri: 'spotify:track:later' },
+      { uri: 'spotify:track:spotify-added-queue-item' }
+    ]
+  }), true);
+});
+
+test('restored playlist continuation rejects an incorrect first upcoming track', () => {
+  const playlist = [
+    { uri: 'spotify:track:one' },
+    { uri: 'spotify:track:restored' },
+    { uri: 'spotify:track:next' }
+  ];
+
+  assert.equal(matchesPlaylistContinuationQueue({
+    playlistTracks: playlist,
+    restoredOffset: 1,
+    upcomingTracks: [{ uri: 'spotify:track:wrong' }]
+  }), false);
+});
+
+test('restored playlist continuation skips unplayable playlist entries', () => {
+  const playlist = [
+    { uri: 'spotify:track:one' },
+    { uri: 'spotify:track:restored' },
+    null,
+    { uri: 'spotify:track:next-playable' }
+  ];
+
+  assert.equal(matchesPlaylistContinuationQueue({
+    playlistTracks: playlist,
+    restoredOffset: 1,
+    upcomingTracks: [{ uri: 'spotify:track:next-playable' }]
+  }), true);
+});
+
+test('restored playlist continuation accepts an empty queue at the end of the playlist', () => {
+  const playlist = [
+    { uri: 'spotify:track:one' },
+    { uri: 'spotify:track:last' }
+  ];
+
+  assert.equal(matchesPlaylistContinuationQueue({
+    playlistTracks: playlist,
+    restoredOffset: 1,
+    upcomingTracks: []
+  }), true);
 });
 
 test('matches Spotify relinked playback to the originally requested track URI', () => {
