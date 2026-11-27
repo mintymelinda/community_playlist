@@ -30,3 +30,8 @@ Copy .env.example to .env and enter the two public client IDs. Run docker compos
 - The generated OBS URL is a bearer credential. Clipboard history, OBS settings exports, screenshots, browser sync, or accidental sharing can expose it.
 - The overlay must refresh directly with provider APIs and store rotated tokens locally. Clearing Browser Source storage after token rotation can require reauthorization.
 - Revoke provider access in Twitch and Spotify if the URL is exposed. Account management and automated URL rotation are not included in this initial flow.
+
+
+## Revoking a hosted setup
+
+The completion page includes **Revoke access & start over**. Use it if the generated OBS URL was exposed or the setup needs to be replaced. The action revokes the Twitch access token, deletes the encrypted server-side authorization record (including the Spotify refresh token), and invalidates the setup management token. Twitch revocation is performed through Twitch's OAuth revoke endpoint. Spotify does not provide a public OAuth token-revocation endpoint; after the action opens [Spotify account app access](https://www.spotify.com/account/apps/), disconnect Community Playlist there as well. Do not consider the Spotify authorization fully revoked until that disconnect is complete. Then return to setup and authorize both accounts again.
