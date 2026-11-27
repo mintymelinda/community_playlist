@@ -241,6 +241,8 @@ export class PlaybackCoordinator {
       playlistUri: this.playlistUri,
       deviceId,
       currentTrackUri: currentUri,
+      currentTrackProgressMs: Number(playback.progress_ms) || 0,
+      currentTrackDurationMs: Number(playback.item?.duration_ms) || 0,
       nextOffset: position.nextOffset,
       nextTrackUri: position.nextTrackUri,
       nextTrackIsrc,
@@ -252,10 +254,13 @@ export class PlaybackCoordinator {
 
   async pump() {
     const state = this.store.get();
+    // While waiting for the broadcaster's current playlist track to finish,
+    // new redemptions only extend the pending FIFO; they must not interrupt it.
+    if (state.mode === 'waiting-for-playlist') return;
     // Dispatch is allowed only at a known queue boundary. If an active request
     // disappears without an explicit skip/completion transition, do not let a
     // later redemption overwrite Spotify playback.
-    const dispatchableModes = ['idle', 'waiting-for-playlist', 'request-complete', 'skipping'];
+    const dispatchableModes = ['idle', 'request-complete', 'skipping'];
     if (state.active || !dispatchableModes.includes(state.mode)) {
       if (state.pending.length) {
         this.logger.warn('[community-playlist] Pending request dispatch blocked because the queue is not at a confirmed transition boundary.', {
@@ -278,8 +283,14 @@ export class PlaybackCoordinator {
       snapshot = await this.captureSnapshot();
       this.store.update(next => {
         next.snapshot = snapshot;
-        next.mode = 'starting';
+        next.mode = 'waiting-for-playlist';
       });
+      this.logger.info('[community-playlist] Requests are waiting for the current playlist track to finish naturally.', {
+        currentTrackUri: snapshot.currentTrackUri,
+        nextTrackUri: snapshot.nextTrackUri,
+        pendingRequestIds: this.store.get().pending.map(item => item.id)
+      });
+      return;
     }
 
     const request = this.store.get().pending[0];
@@ -425,11 +436,85 @@ export class PlaybackCoordinator {
     return null;
   }
 
+  async pollWaitingForPlaylist() {
+    const state = this.store.get();
+    const snapshot = state.snapshot;
+    if (!snapshot || !state.pending.length || state.mode !== 'waiting-for-playlist') return;
+
+    const playback = await this.spotify.getPlaybackState();
+    if (!playback) return;
+    if (playback.device?.id !== snapshot.deviceId) {
+      this.handoff('Spotify changed playback devices while waiting for the current playlist track to finish.');
+      return;
+    }
+
+    const snapshotPlaylistUri = snapshot.playlistUri || this.playlistUri;
+    if (playback.context?.uri !== snapshotPlaylistUri) {
+      this.handoff('Spotify playback left the saved playlist before the current track finished. Requests were preserved.');
+      return;
+    }
+
+    const currentUri = trackUri(playback);
+    let sameUriPlaylistAdvance = false;
+    if (snapshot.nextTrackUri &&
+        snapshot.nextTrackUri === snapshot.currentTrackUri &&
+        currentUri === snapshot.currentTrackUri &&
+        playback.is_playing === true) {
+      // URI equality cannot distinguish consecutive duplicate playlist items.
+      // Compare the upcoming item after the candidate next track instead.
+      try {
+        const queue = await this.spotify.getQueue();
+        sameUriPlaylistAdvance = (queue?.[0]?.uri || null) === (snapshot.followingTrackUri || null);
+      } catch (error) {
+        this.logger.warn('[community-playlist] Could not verify a duplicate-track playlist boundary yet.', {
+          error: error.message
+        });
+      }
+    }
+    const matchesNextTrack = Boolean(snapshot.nextTrackUri && (
+      (currentUri === snapshot.nextTrackUri &&
+        (currentUri !== snapshot.currentTrackUri || sameUriPlaylistAdvance)) ||
+      (currentUri !== snapshot.currentTrackUri &&
+        await this.trackMatchesRequest(playback, {
+          uri: snapshot.nextTrackUri,
+          isrc: snapshot.nextTrackIsrc || null
+        }))
+    ));
+    const naturallyAdvanced = Boolean(matchesNextTrack && playback.is_playing === true);
+    const naturallyEndedAtPlaylistEnd = Boolean(
+      !snapshot.nextTrackUri &&
+      currentUri === snapshot.currentTrackUri &&
+      playback.is_playing === false &&
+      Number(snapshot.currentTrackDurationMs) > 0 &&
+      Number(playback.progress_ms) >= Number(snapshot.currentTrackDurationMs) - 2000
+    );
+    if (currentUri === snapshot.currentTrackUri && !naturallyEndedAtPlaylistEnd && !sameUriPlaylistAdvance) return;
+    // If Spotify has advanced to the intended next item but it is paused,
+    // preserve that position and wait for playback to resume before dispatch.
+    if (matchesNextTrack && !playback.is_playing) return;
+    if (!naturallyAdvanced && !naturallyEndedAtPlaylistEnd) {
+      this.handoff('Spotify moved away from the expected playlist boundary while waiting for the current track to finish. Requests were preserved.');
+      return;
+    }
+
+    this.logger.info('[community-playlist] The original playlist track finished naturally; starting the queued viewer requests.', {
+      previousTrackUri: snapshot.currentTrackUri,
+      nextTrackUri: snapshot.nextTrackUri,
+      pendingRequestIds: state.pending.map(item => item.id)
+    });
+    this.store.update(next => { next.mode = 'request-complete'; });
+    await this.pump();
+  }
+
   async poll() {
     if (!this.started) return;
     const currentState = this.store.get();
     if (!currentState.active) {
-      if (currentState.mode !== 'handoff' && currentState.pending.length) await this.pump();
+      if (currentState.mode === 'waiting-for-playlist') {
+        await this.pollWaitingForPlaylist();
+      } else if (currentState.mode !== 'handoff' && currentState.pending.length) {
+        await this.pump();
+      }
       return;
     }
 
@@ -578,6 +663,12 @@ export class PlaybackCoordinator {
   async reconcile() {
     const state = this.store.get();
     if (!state.active) {
+      if (state.snapshot && state.mode === 'waiting-for-playlist' && state.pending.length) {
+        // A restart must preserve the wait rather than discard the captured
+        // playlist position or begin requests by interrupting the current item.
+        await this.pollWaitingForPlaylist();
+        return;
+      }
       if (state.snapshot) {
         this.store.update(next => {
           next.snapshot = null;

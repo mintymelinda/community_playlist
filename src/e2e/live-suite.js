@@ -253,7 +253,7 @@ export function createLiveE2ESuite(app) {
   }
 
 
-  async function waitForRequest(requestId, track, label) {
+  async function waitForRequest(requestId, track, label, timeoutMs = 45000) {
     return waitFor(label + ' to be confirmed as the active application request and Spotify playback', async () => {
       const [playback, state] = await Promise.all([
         app.spotify.getPlaybackState(),
@@ -265,7 +265,7 @@ export function createLiveE2ESuite(app) {
         await playbackMatchesTrack(playback, track)
         ? playback
         : null;
-    });
+    }, timeoutMs);
   }
 
   async function runPlaybackSequence() {
@@ -282,11 +282,14 @@ export function createLiveE2ESuite(app) {
       const secondId = runId + '-redemption-y';
 
       await injectRedemption(firstId, app.config.e2eTrackX);
-      await waitForRequest(firstId, trackX, 'request X');
+      const remainingCurrentTrackMs = Math.max(0,
+        Number(snapshot.currentTrackDurationMs || 0) - Number(snapshot.currentTrackProgressMs || 0));
+      await waitForRequest(firstId, trackX, 'request X after the current playlist track finishes naturally',
+        Math.max(45000, remainingCurrentTrackMs + 60000));
       let state = app.store.get();
       assert(state.active?.id === firstId, 'Request X was not recorded as the active request.');
       assert(state.snapshot?.nextTrackUri === snapshot.nextTrackUri, 'The coordinator did not preserve the preflight playlist continuation.');
-      checks.push({ name: 'First synthetic Twitch redemption interrupts Spotify playlist', passed: true });
+      checks.push({ name: 'First synthetic Twitch redemption waits for natural playlist track completion', passed: true });
 
       await injectRedemption(secondId, app.config.e2eTrackY);
       state = app.store.get();
@@ -546,7 +549,10 @@ export function createLiveE2ESuite(app) {
       const secondId = runId + '-redemption-y';
 
       await injectRedemption(firstId, app.config.e2eTrackX);
-      await waitForRequest(firstId, trackX, 'request X for the real chat skip test');
+      const remainingCurrentTrackMs = Math.max(0,
+        Number(snapshot.currentTrackDurationMs || 0) - Number(snapshot.currentTrackProgressMs || 0));
+      await waitForRequest(firstId, trackX, 'request X after the current playlist track finishes naturally',
+        Math.max(timeoutMs, remainingCurrentTrackMs + 60000));
       await injectRedemption(secondId, app.config.e2eTrackY);
       assert(app.store.get().active?.id === firstId, 'Request X was not active before the live chat test.');
       assert(app.store.get().pending[0]?.id === secondId, 'Request Y was not pending before the live chat test.');

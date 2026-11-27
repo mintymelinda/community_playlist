@@ -62,13 +62,43 @@ class FakeSpotify {
 }
 
 function createCoordinator(options = {}) {
+  const { autoAdvanceToNextTrack = true, ...coordinatorOptions } = options;
   const spotify = new FakeSpotify();
   const store = new QueueStore(new MemoryStorage());
   const timers = { setInterval: () => 1, clearInterval: () => {} };
   const logger = { info() {}, warn() {}, error() {} };
   const coordinator = new PlaybackCoordinator({
-    spotify, store, playlistUri, playlistId: 'playlist1', timers, logger, ...options
+    spotify, store, playlistUri, playlistId: 'playlist1', timers, logger, ...coordinatorOptions
   });
+  // Most legacy coordinator tests exercise request playback after a natural
+  // playlist boundary. Model that boundary explicitly rather than making
+  // enqueue interrupt the currently playing track.
+  const enqueue = coordinator.enqueue.bind(coordinator);
+  coordinator.enqueue = async item => {
+    const accepted = await enqueue(item);
+    const state = store.get();
+    if (autoAdvanceToNextTrack && state.mode === 'waiting-for-playlist' && state.snapshot?.nextTrackUri) {
+      const nextTrack = tracks.find(track => track.uri === state.snapshot.nextTrackUri);
+      if (nextTrack) {
+        spotify.current = {
+          device: { id: deviceId },
+          context: { type: 'playlist', uri: playlistUri },
+          item: nextTrack,
+          is_playing: true,
+          shuffle_state: spotify.current.shuffle_state ?? false,
+          repeat_state: spotify.current.repeat_state ?? 'off',
+          progress_ms: 100
+        };
+        coordinator.started = true;
+        try {
+          await coordinator.poll();
+        } finally {
+          coordinator.started = false;
+        }
+      }
+    }
+    return accepted;
+  };
   return { spotify, store, coordinator };
 }
 
@@ -81,6 +111,67 @@ const request = (id, track, requester = 'viewer') => ({
   isrc: track.isrc || null,
   requester,
   queuedAt: Date.now()
+});
+
+test('waits for the current playlist track to finish before starting the request FIFO', async () => {
+  const { spotify, store, coordinator } = createCoordinator({ autoAdvanceToNextTrack: false });
+  const originalTrack = clone(spotify.current.item);
+
+  await coordinator.enqueue(request('wait-for-natural-end', tracks[2]));
+  await coordinator.enqueue(request('second-waiting-request', tracks[3]));
+
+  assert.equal(store.get().mode, 'waiting-for-playlist');
+  assert.equal(store.get().active, null);
+  assert.deepEqual(store.get().pending.map(item => item.id), ['wait-for-natural-end', 'second-waiting-request']);
+  assert.deepEqual(spotify.played, []);
+  assert.equal(spotify.current.item.uri, originalTrack.uri);
+  assert.equal(spotify.current.context.uri, playlistUri);
+
+  // Spotify naturally advances to the saved next playlist item.
+  spotify.current = {
+    ...spotify.current,
+    item: tracks[1],
+    progress_ms: 100,
+    is_playing: true
+  };
+  coordinator.started = true;
+  await coordinator.poll();
+  coordinator.started = false;
+
+  assert.equal(store.get().mode, 'playing-request');
+  assert.equal(store.get().active.id, 'wait-for-natural-end');
+  assert.deepEqual(store.get().pending.map(item => item.id), ['second-waiting-request']);
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri]);
+
+  await coordinator.skip();
+  assert.equal(store.get().active.id, 'second-waiting-request');
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri, tracks[3].uri]);
+  await coordinator.skip();
+  assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
+  assert.equal(spotify.current.item.uri, tracks[1].uri);
+});
+
+test('waits for a duplicate current track URI to advance to its next playlist occurrence', async () => {
+  const { spotify, store, coordinator } = createCoordinator({ autoAdvanceToNextTrack: false });
+  spotify.getPlaylistItems = async () => [tracks[0], tracks[0], tracks[1], tracks[2]];
+  spotify.getQueue = async () => [tracks[0], tracks[1], tracks[2]];
+
+  await coordinator.enqueue(request('duplicate-boundary', tracks[3]));
+  assert.equal(store.get().mode, 'waiting-for-playlist');
+  assert.equal(store.get().snapshot.nextTrackUri, tracks[0].uri);
+  assert.deepEqual(spotify.played, []);
+
+  // The same URI is now the next occurrence, and its upcoming queue begins
+  // with the track after that duplicate.
+  spotify.current = { ...spotify.current, progress_ms: 100 };
+  spotify.getQueue = async () => [tracks[1], tracks[2]];
+  coordinator.started = true;
+  await coordinator.poll();
+  coordinator.started = false;
+
+  assert.equal(store.get().mode, 'playing-request');
+  assert.equal(store.get().active.id, 'duplicate-boundary');
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[3].uri]);
 });
 
 test('plays viewer requests FIFO ahead of the saved playlist continuation', async () => {
@@ -575,6 +666,13 @@ test('recovers an active request after reload when Spotify still plays that requ
   });
   const activeRequest = request('reload-active', { ...tracks[2], name: 'X' });
   await firstCoordinator.enqueue(activeRequest);
+  spotify.current = {
+    device: { id: deviceId }, context: { type: 'playlist', uri: playlistUri },
+    item: tracks[1], is_playing: true, shuffle_state: false, repeat_state: 'off', progress_ms: 100
+  };
+  firstCoordinator.started = true;
+  await firstCoordinator.poll();
+  firstCoordinator.started = false;
   const reloadedStore = new QueueStore(storage);
   const reloadedCoordinator = new PlaybackCoordinator({
     spotify, store: reloadedStore, playlistUri, playlistId: 'playlist1',
@@ -602,6 +700,18 @@ test('recovers by advancing to the next viewer request if Spotify already resume
   });
   await firstCoordinator.enqueue(request('reload-complete-x', { ...tracks[2], name: 'X' }));
   await firstCoordinator.enqueue(request('reload-pending-y', { ...tracks[3], name: 'Y' }));
+  spotify.current = {
+    device: { id: deviceId },
+    context: { type: 'playlist', uri: playlistUri },
+    item: tracks[1],
+    is_playing: true,
+    shuffle_state: false,
+    repeat_state: 'off',
+    progress_ms: 100
+  };
+  firstCoordinator.started = true;
+  await firstCoordinator.poll();
+  firstCoordinator.started = false;
   firstStore.update(state => { state.active.lastProgressMs = tracks[2].duration_ms - 2000; });
 
   spotify.current = {
