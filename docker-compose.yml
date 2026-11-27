@@ -10,6 +10,8 @@ services:
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:?Set the service Spotify public client ID}
       OVERLAY_BASE_URL: ${OVERLAY_BASE_URL:-https://mintymelinda.github.io/community_playlist/overlay.html}
     volumes:
-      - ./data:/data
+      - community-playlist-auth-data:/data
     ports:
       - "3000:3000"
+volumes:
+  community-playlist-auth-data:
