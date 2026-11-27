@@ -953,6 +953,7 @@ test('restores any playing track in the same playlist when shuffle selects a dif
   };
 
   await coordinator.enqueue(request('shuffle-restore', tracks[2]));
+  assert.equal(store.get().snapshot.shuffle, true, 'the snapshot must retain the shuffle state captured before requests');
   assert.equal(store.get().active.id, 'shuffle-restore');
 
   assert.equal(await coordinator.skip(), true);
