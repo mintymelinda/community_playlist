@@ -930,3 +930,37 @@ test('matches the active playlist by Spotify ID when its context is reported as 
   assert.equal(store.get().mode, 'playing-request');
   assert.equal(spotify.played[0].uri, tracks[2].uri);
 });
+
+
+test('restores any playing track in the same playlist when shuffle selects a different continuation', async () => {
+  const { spotify, store, coordinator } = createCoordinator({
+    playbackConfirmationTimeoutMs: 1000,
+    playbackConfirmationPollMs: 100
+  });
+  spotify.current.shuffle_state = true;
+  spotify.playPlaylistAt = async (uri, offset, targetDevice) => {
+    spotify.restored.push({ uri, offset, targetDevice });
+    // Spotify shuffle is free to resume a different item from the same playlist.
+    spotify.current = {
+      device: { id: targetDevice },
+      context: { type: 'playlist', uri },
+      item: tracks[3],
+      is_playing: true,
+      shuffle_state: true,
+      repeat_state: 'off',
+      progress_ms: 250
+    };
+  };
+
+  await coordinator.enqueue(request('shuffle-restore', tracks[2]));
+  assert.equal(store.get().snapshot.shuffle, true, 'the snapshot must retain the shuffle state captured before requests');
+  assert.equal(store.get().active.id, 'shuffle-restore');
+
+  assert.equal(await coordinator.skip(), true);
+  assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
+  assert.equal(spotify.current.item.uri, tracks[3].uri);
+  assert.equal(spotify.current.context.uri, playlistUri);
+  assert.equal(spotify.current.is_playing, true);
+  assert.equal(store.get().mode, 'idle');
+  assert.equal(store.get().snapshot, null);
+});
