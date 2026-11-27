@@ -488,7 +488,7 @@ export class PlaybackCoordinator {
       Number(snapshot.currentTrackDurationMs) > 0 &&
       Number(playback.progress_ms) >= Number(snapshot.currentTrackDurationMs) - 2000
     );
-    if (currentUri === snapshot.currentTrackUri && !naturallyEndedAtPlaylistEnd) return;
+    if (currentUri === snapshot.currentTrackUri && !naturallyEndedAtPlaylistEnd && !sameUriPlaylistAdvance) return;
     // If Spotify has advanced to the intended next item but it is paused,
     // preserve that position and wait for playback to resume before dispatch.
     if (matchesNextTrack && !playback.is_playing) return;
