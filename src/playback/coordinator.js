@@ -525,18 +525,22 @@ export class PlaybackCoordinator {
     }
 
     const playback = await this.spotify.getPlaybackState();
-    if (playback?.device?.id === state.snapshot.deviceId && await this.trackMatchesRequest(playback, state.active)) {
+    const returnedToPlaylist = playback?.device?.id === state.snapshot.deviceId &&
+      trackUri(playback) === state.snapshot.nextTrackUri &&
+      playback.context?.uri === this.playlistUri;
+    const matchesActiveRequest = playback?.device?.id === state.snapshot.deviceId &&
+      await this.trackMatchesRequest(playback, state.active);
+
+    if (matchesActiveRequest && !(returnedToPlaylist && this.hasNaturallyCompleted(state.active))) {
       this.store.update(next => {
-        next.active.lastProgressMs = Number(playback.progress_ms) || 0;
+        next.active.lastProgressMs = Math.max(next.active.lastProgressMs || 0, Number(playback.progress_ms) || 0);
         next.active.durationMs = Number(playback.item?.duration_ms) || next.active.durationMs || 0;
         next.mode = playback.is_playing ? 'playing-request' : 'paused-request';
       });
       return;
     }
 
-    if (playback?.device?.id === state.snapshot.deviceId &&
-        trackUri(playback) === state.snapshot.nextTrackUri &&
-        playback.context?.uri === this.playlistUri) {
+    if (returnedToPlaylist) {
       if (!this.hasNaturallyCompleted(state.active)) {
         this.handoff('The previous session reached the playlist continuation without persisted evidence that the active viewer request completed naturally. Requests were preserved for manual recovery.');
         return;
