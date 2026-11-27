@@ -455,12 +455,30 @@ export class PlaybackCoordinator {
     }
 
     const currentUri = trackUri(playback);
+    let sameUriPlaylistAdvance = false;
+    if (snapshot.nextTrackUri &&
+        snapshot.nextTrackUri === snapshot.currentTrackUri &&
+        currentUri === snapshot.currentTrackUri &&
+        playback.is_playing === true) {
+      // URI equality cannot distinguish consecutive duplicate playlist items.
+      // Compare the upcoming item after the candidate next track instead.
+      try {
+        const queue = await this.spotify.getQueue();
+        sameUriPlaylistAdvance = (queue?.[0]?.uri || null) === (snapshot.followingTrackUri || null);
+      } catch (error) {
+        this.logger.warn('[community-playlist] Could not verify a duplicate-track playlist boundary yet.', {
+          error: error.message
+        });
+      }
+    }
     const matchesNextTrack = Boolean(snapshot.nextTrackUri && (
-      currentUri === snapshot.nextTrackUri ||
-      await this.trackMatchesRequest(playback, {
-        uri: snapshot.nextTrackUri,
-        isrc: snapshot.nextTrackIsrc || null
-      })
+      (currentUri === snapshot.nextTrackUri &&
+        (currentUri !== snapshot.currentTrackUri || sameUriPlaylistAdvance)) ||
+      (currentUri !== snapshot.currentTrackUri &&
+        await this.trackMatchesRequest(playback, {
+          uri: snapshot.nextTrackUri,
+          isrc: snapshot.nextTrackIsrc || null
+        }))
     ));
     const naturallyAdvanced = Boolean(matchesNextTrack && playback.is_playing === true);
     const naturallyEndedAtPlaylistEnd = Boolean(
