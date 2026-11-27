@@ -455,11 +455,14 @@ export class PlaybackCoordinator {
     }
 
     const currentUri = trackUri(playback);
-    const naturallyAdvanced = Boolean(
-      playback.is_playing === true &&
-      snapshot.nextTrackUri &&
-      currentUri === snapshot.nextTrackUri
-    );
+    const matchesNextTrack = Boolean(snapshot.nextTrackUri && (
+      currentUri === snapshot.nextTrackUri ||
+      await this.trackMatchesRequest(playback, {
+        uri: snapshot.nextTrackUri,
+        isrc: snapshot.nextTrackIsrc || null
+      })
+    ));
+    const naturallyAdvanced = Boolean(matchesNextTrack && playback.is_playing === true);
     const naturallyEndedAtPlaylistEnd = Boolean(
       !snapshot.nextTrackUri &&
       currentUri === snapshot.currentTrackUri &&
@@ -468,6 +471,9 @@ export class PlaybackCoordinator {
       Number(playback.progress_ms) >= Number(snapshot.currentTrackDurationMs) - 2000
     );
     if (currentUri === snapshot.currentTrackUri && !naturallyEndedAtPlaylistEnd) return;
+    // If Spotify has advanced to the intended next item but it is paused,
+    // preserve that position and wait for playback to resume before dispatch.
+    if (matchesNextTrack && !playback.is_playing) return;
     if (!naturallyAdvanced && !naturallyEndedAtPlaylistEnd) {
       this.handoff('Spotify moved away from the expected playlist boundary while waiting for the current track to finish. Requests were preserved.');
       return;
