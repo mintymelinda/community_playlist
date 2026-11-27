@@ -3,7 +3,7 @@
 ## User setup
 
 1. Open the signup page over HTTPS.
-2. Authorize the Twitch broadcaster account. Setup loads that broadcaster's Custom Power-ups from Twitch.
+2. Authorize Twitch as the account that owns the channel you want to monitor. That same account is the EventSub chat reader and broadcaster identity; the application owner does not need channel moderator access. Setup loads that channel's Custom Power-ups from Twitch.
 3. Select the enabled, in-stock Custom Power-up that requires viewer text input and should be used for song requests. The selection is saved by Twitch Power-up ID, not by its display name. Use Refresh list if you change Power-ups in Twitch while setup is open.
 4. Authorize the Spotify account. After both providers are connected and a Power-up is selected, choose Finish setup.
 5. On the completion page, use COPY to retrieve the OBS Browser Source URL and paste it into OBS.
