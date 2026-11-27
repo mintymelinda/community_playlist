@@ -151,6 +151,29 @@ test('waits for the current playlist track to finish before starting the request
   assert.equal(spotify.current.item.uri, tracks[1].uri);
 });
 
+test('waits for a duplicate current track URI to advance to its next playlist occurrence', async () => {
+  const { spotify, store, coordinator } = createCoordinator({ autoAdvanceToNextTrack: false });
+  spotify.getPlaylistItems = async () => [tracks[0], tracks[0], tracks[1], tracks[2]];
+  spotify.getQueue = async () => [tracks[0], tracks[1], tracks[2]];
+
+  await coordinator.enqueue(request('duplicate-boundary', tracks[3]));
+  assert.equal(store.get().mode, 'waiting-for-playlist');
+  assert.equal(store.get().snapshot.nextTrackUri, tracks[0].uri);
+  assert.deepEqual(spotify.played, []);
+
+  // The same URI is now the next occurrence, and its upcoming queue begins
+  // with the track after that duplicate.
+  spotify.current = { ...spotify.current, progress_ms: 100 };
+  spotify.getQueue = async () => [tracks[1], tracks[2]];
+  coordinator.started = true;
+  await coordinator.poll();
+  coordinator.started = false;
+
+  assert.equal(store.get().mode, 'playing-request');
+  assert.equal(store.get().active.id, 'duplicate-boundary');
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[3].uri]);
+});
+
 test('plays viewer requests FIFO ahead of the saved playlist continuation', async () => {
   const { spotify, store, coordinator } = createCoordinator();
   await coordinator.enqueue(request('request-1', { ...tracks[2], name: 'X' }));
