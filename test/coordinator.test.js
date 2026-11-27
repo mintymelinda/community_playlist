@@ -241,6 +241,7 @@ test('keeps the original next-track offset when Spotify advances before pending 
   const { spotify, store, coordinator } = createCoordinator();
   await coordinator.enqueue(request('request-1', { ...tracks[2], name: 'X' }));
   await coordinator.enqueue(request('request-2', { ...tracks[3], name: 'Y' }));
+  store.update(state => { state.active.lastProgressMs = tracks[2].duration_ms - 2000; });
   coordinator.started = true;
 
   spotify.current = {
