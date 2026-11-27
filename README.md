@@ -81,7 +81,7 @@ After the viewer FIFO is exhausted, it restores the playlist at the saved next o
 
 If the device changes or unrelated manual playback is detected, the controller stops taking over, preserves unplayed requests, and enters handoff mode. It never pauses or rewrites the user's playlist.
 
-**Important limitation:** Spotify does not expose the active playlist offset directly, and API success responses do not prove the intended item is playing. This controller infers the position using the playlist items and upcoming queue, verifies the actual track after commands, and restores by playlist context plus offset. These behaviours have mock-based tests but still require verification on the actual Premium account and Connect device. Browser throttling or loss of the active tab can still delay polling enough to affect the exact transition timing.
+**Important limitation:** Spotify does not expose the active playlist offset directly, and API success responses do not prove the intended item is playing. This controller infers the position using the playlist items and upcoming queue, verifies the actual track after commands, and restores by playlist context plus offset. The live Spotify interruption/request/skip/restoration E2E sequence has passed on the configured Premium account and Connect device. Browser throttling or loss of the active tab can still delay polling enough to affect transition timing and remains a separate validation item.
 
 Spotify's platform terms prohibit broadcasting Spotify content and synchronizing sound recordings with visual media. This app remains headless and has no audio or visual rendering path; it must not be used to pipe Spotify audio into a broadcast or to synchronize Spotify recordings with an overlay.
 
