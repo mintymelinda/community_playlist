@@ -118,10 +118,11 @@ test('waits for the current playlist track to finish before starting the request
   const originalTrack = clone(spotify.current.item);
 
   await coordinator.enqueue(request('wait-for-natural-end', tracks[2]));
+  await coordinator.enqueue(request('second-waiting-request', tracks[3]));
 
   assert.equal(store.get().mode, 'waiting-for-playlist');
   assert.equal(store.get().active, null);
-  assert.deepEqual(store.get().pending.map(item => item.id), ['wait-for-natural-end']);
+  assert.deepEqual(store.get().pending.map(item => item.id), ['wait-for-natural-end', 'second-waiting-request']);
   assert.deepEqual(spotify.played, []);
   assert.equal(spotify.current.item.uri, originalTrack.uri);
   assert.equal(spotify.current.context.uri, playlistUri);
@@ -139,8 +140,12 @@ test('waits for the current playlist track to finish before starting the request
 
   assert.equal(store.get().mode, 'playing-request');
   assert.equal(store.get().active.id, 'wait-for-natural-end');
+  assert.deepEqual(store.get().pending.map(item => item.id), ['second-waiting-request']);
   assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri]);
 
+  await coordinator.skip();
+  assert.equal(store.get().active.id, 'second-waiting-request');
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri, tracks[3].uri]);
   await coordinator.skip();
   assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
   assert.equal(spotify.current.item.uri, tracks[1].uri);
