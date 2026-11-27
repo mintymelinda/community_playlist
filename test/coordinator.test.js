@@ -104,6 +104,35 @@ test('plays viewer requests FIFO ahead of the saved playlist continuation', asyn
 });
 
 
+test('does not dispatch a pending request without an explicit completion or skip transition', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  await coordinator.enqueue(request('request-x', tracks[2]));
+
+  store.update(state => {
+    state.pending.push(request('request-y', tracks[3]));
+    state.active = null;
+    // Simulate an inconsistent state where the active request was cleared
+    // without recording a skip/completion transition.
+  });
+
+  await coordinator.pump();
+
+  assert.deepEqual(spotify.played.map(item => item.uri), [tracks[2].uri]);
+  assert.equal(store.get().mode, 'playing-request');
+  assert.equal(store.get().pending[0].id, 'request-y');
+});
+
+test('restores the playlist URI captured in the snapshot even if the coordinator default changes', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  await coordinator.enqueue(request('request-x', tracks[2]));
+
+  coordinator.playlistUri = 'spotify:playlist:challenge-run';
+  assert.equal(await coordinator.skip(), true);
+
+  assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
+  assert.equal(store.get().snapshot, null);
+});
+
 test('restores the playlist after skipping a request that Spotify played through an ISRC relink', async () => {
   const { spotify, store, coordinator } = createCoordinator();
   const requestedUri = 'spotify:track:requested-track-id';
