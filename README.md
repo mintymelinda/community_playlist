@@ -168,7 +168,7 @@ This is a live integration test, not a hermetic test: it changes playback on the
 
 ## Releases and deployment
 
-Tagged releases are verified and packaged automatically by GitHub Actions. The release ZIP contains the static application and setup documentation; no build or server-side runtime is required. See [release, deployment, and rollback instructions](docs/releasing.md).
+Tagged releases are verified and packaged automatically by GitHub Actions. The release ZIP contains the static OBS overlay and Docker-based authorization service. See [release, deployment, and rollback instructions](docs/releasing.md).
 
 ## Hosted authorization and OBS setup
 
