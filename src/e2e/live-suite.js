@@ -333,10 +333,14 @@ export function createLiveE2ESuite(app) {
           app.spotify.getPlaybackState(),
           Promise.resolve(app.store.get())
         ]);
-        const directTrackMatch = await playbackMatchesTrack(playback, {
-          uri: snapshot.nextTrackUri,
-          isrc: snapshot.nextTrackIsrc || null
-        });
+        const directTrackMatch = snapshot.shuffle === true
+          ? Boolean(playback?.item?.uri && playback?.is_playing === true &&
+            playback?.device?.id === snapshot.deviceId &&
+            isPlaylistContext(app.spotify, playback, app.coordinator.playlistId))
+          : await playbackMatchesTrack(playback, {
+            uri: snapshot.nextTrackUri,
+            isrc: snapshot.nextTrackIsrc || null
+          });
         let followingQueueMatch = false;
         if (!directTrackMatch && snapshot.followingTrackUri &&
             playback?.device?.id === snapshot.deviceId &&
@@ -351,7 +355,9 @@ export function createLiveE2ESuite(app) {
           current.pending.length === 0 &&
           !current.snapshot;
       });
-      checks.push({ name: 'Playlist resumes at the exact saved next track', passed: true });
+      checks.push({ name: snapshot.shuffle === true
+        ? 'Shuffled playback resumes on a track from the original playlist'
+        : 'Playlist resumes at the exact saved next track', passed: true });
 
       const [playlistAfter, queueAfter] = await Promise.all([
         app.spotify.getPlaylistItems(app.coordinator.playlistId),
@@ -361,19 +367,23 @@ export function createLiveE2ESuite(app) {
       assert(JSON.stringify(playlistAfterUris) === JSON.stringify(playlistBefore), 'The Spotify playlist items changed during the test.');
       checks.push({ name: 'Spotify playlist was not mutated', passed: true });
 
-      const expectedFollowingTrack = snapshot.followingTrackUri || playlistAfter
-        .slice(snapshot.nextOffset + 1)
-        .find(item => item?.uri)?.uri || null;
-      const actualUpcomingTrack = spotifyTrackUri(queueAfter[0]);
-      assert(
-        expectedFollowingTrack
-          ? actualUpcomingTrack === expectedFollowingTrack
-          : !queueAfter.length,
-        'Spotify upcoming queue did not continue with the captured playlist order after restoration. Expected first upcoming URI ' +
-          String(expectedFollowingTrack || 'none') + '; observed ' + String(actualUpcomingTrack || 'none') +
-          '; full upcoming queue ' + JSON.stringify(queueAfter.map(item => spotifyTrackUri(item)))
-      );
-      checks.push({ name: 'Upcoming queue begins with the next playlist track after restoration', passed: true });
+      if (snapshot.shuffle !== true) {
+        const expectedFollowingTrack = snapshot.followingTrackUri || playlistAfter
+          .slice(snapshot.nextOffset + 1)
+          .find(item => item?.uri)?.uri || null;
+        const actualUpcomingTrack = spotifyTrackUri(queueAfter[0]);
+        assert(
+          expectedFollowingTrack
+            ? actualUpcomingTrack === expectedFollowingTrack
+            : !queueAfter.length,
+          'Spotify upcoming queue did not continue with the captured playlist order after restoration. Expected first upcoming URI ' +
+            String(expectedFollowingTrack || 'none') + '; observed ' + String(actualUpcomingTrack || 'none') +
+            '; full upcoming queue ' + JSON.stringify(queueAfter.map(item => spotifyTrackUri(item)))
+        );
+        checks.push({ name: 'Upcoming queue begins with the next playlist track after restoration', passed: true });
+      } else {
+        checks.push({ name: 'Shuffled playlist resumed without requiring a predetermined next track', passed: true });
+      }
 
       completed = true;
       return {
