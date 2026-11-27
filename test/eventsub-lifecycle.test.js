@@ -158,6 +158,10 @@ test('opens EventSub and subscribes to redemption and broadcaster chat events', 
     'session-1',
     'session-1'
   ]);
+  assert.deepEqual(env.subscriptions.map(item => item.condition), [
+    { broadcaster_user_id: broadcasterId, reward_id: powerUpId },
+    { broadcaster_user_id: broadcasterId, user_id: broadcasterId }
+  ]);
 
   await env.eventSub.handleNotification({
     metadata: { message_type: 'notification', message_id: 'event-1' },

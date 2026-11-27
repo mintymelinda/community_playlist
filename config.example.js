@@ -7,8 +7,6 @@ export default {
   spotifyRedirectUri: "https://example.com/community-playlist/",
   // Optional: blank automatically follows the playlist already playing on Spotify.
   playlistUri: "",
-  // Optional: leave empty to use the broadcaster identified by Twitch OAuth.
-  broadcasterId: "",
   // Optional: leave empty only when exactly one enabled text-input Custom Power-up exists.
   powerUpId: "",
   // Optional: pin to one Connect device ID. Blank uses the currently active device.

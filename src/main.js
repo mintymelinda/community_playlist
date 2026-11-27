@@ -80,6 +80,7 @@ class CommunityPlaylistApp {
     this.controllerLockRelease = null;
     this.controllerLockTask = null;
     this.broadcasterId = null;
+    this.twitchIdentity = null;
     this.powerUp = null;
   }
 
@@ -148,11 +149,10 @@ class CommunityPlaylistApp {
       return { mode: 'spotify-authorization' };
     }
 
-    const twitchIdentity = await this.twitchAuth.validate();
-    this.broadcasterId = this.config.broadcasterId || twitchIdentity.user_id;
-    if (String(this.broadcasterId) !== String(twitchIdentity.user_id)) {
-      throw new Error('Twitch must be authorized by the broadcaster account configured for this channel.');
-    }
+    this.twitchIdentity = await this.twitchAuth.validate();
+    // The Twitch account that completes OAuth is the channel identity. The
+    // application owner/client ID is not a separate chat user or moderator.
+    this.broadcasterId = this.twitchIdentity.user_id;
 
     const powerUp = await this.discoverPowerUp();
     this.powerUp = powerUp;
@@ -219,7 +219,7 @@ class CommunityPlaylistApp {
   status() {
     return {
       running: this.started,
-      broadcasterId: this.broadcasterId,
+      channel: this.twitchIdentity?.login || null,
       powerUp: this.powerUp ? { id: this.powerUp.id, title: this.powerUp.title } : null,
       playlistUri: this.playlistUri,
       playback: this.coordinator.status()
