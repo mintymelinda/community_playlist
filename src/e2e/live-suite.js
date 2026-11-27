@@ -139,7 +139,9 @@ export function createLiveE2ESuite(app) {
     playbackPreparation = saved;
 
     try {
-      await app.spotify.setShuffle(false, deviceId);
+      // Keep Spotify's live queue order intact. The coordinator can resolve
+      // shuffled continuations from the upcoming queue; disabling shuffle here
+      // would silently replace the next song the broadcaster was expecting.
       await app.spotify.setRepeat('off', deviceId);
 
       const playlistAlreadyLoaded =
@@ -160,7 +162,7 @@ export function createLiveE2ESuite(app) {
         return playback?.device?.id === deviceId &&
           isPlaylistContext(app.spotify, playback, playlistId) &&
           playback.is_playing &&
-          playback.shuffle_state === false &&
+          playback.shuffle_state === saved.shuffle &&
           playback.repeat_state === 'off'
           ? playback
           : null;
@@ -359,18 +361,16 @@ export function createLiveE2ESuite(app) {
       assert(JSON.stringify(playlistAfterUris) === JSON.stringify(playlistBefore), 'The Spotify playlist items changed during the test.');
       checks.push({ name: 'Spotify playlist was not mutated', passed: true });
 
-      const expectedNextPlaylistTrack = playlistAfter
+      const expectedFollowingTrack = snapshot.followingTrackUri || playlistAfter
         .slice(snapshot.nextOffset + 1)
         .find(item => item?.uri)?.uri || null;
       const actualUpcomingTrack = spotifyTrackUri(queueAfter[0]);
       assert(
-        matchesPlaylistContinuationQueue({
-          playlistTracks: playlistAfter,
-          restoredOffset: snapshot.nextOffset,
-          upcomingTracks: queueAfter
-        }),
-        'Spotify upcoming queue did not continue with the next playlist item after restoration. Expected first upcoming URI ' +
-          String(expectedNextPlaylistTrack || 'none') + '; observed ' + String(actualUpcomingTrack || 'none') +
+        expectedFollowingTrack
+          ? actualUpcomingTrack === expectedFollowingTrack
+          : !queueAfter.length,
+        'Spotify upcoming queue did not continue with the captured playlist order after restoration. Expected first upcoming URI ' +
+          String(expectedFollowingTrack || 'none') + '; observed ' + String(actualUpcomingTrack || 'none') +
           '; full upcoming queue ' + JSON.stringify(queueAfter.map(item => spotifyTrackUri(item)))
       );
       checks.push({ name: 'Upcoming queue begins with the next playlist track after restoration', passed: true });
