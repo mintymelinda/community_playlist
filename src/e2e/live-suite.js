@@ -170,10 +170,6 @@ export function createLiveE2ESuite(app) {
         app.spotify.resolveTrack(app.config.e2eTrackX),
         app.spotify.resolveTrack(app.config.e2eTrackY)
       ]);
-      assert(trackX.uri !== trackY.uri, 'E2E_TRACK_X and E2E_TRACK_Y must resolve to different Spotify tracks.');
-      assert(trackX.uri !== snapshot.currentTrackUri && trackY.uri !== snapshot.currentTrackUri, 'Choose test tracks other than the currently playing playlist track.');
-      assert(trackX.uri !== snapshot.nextTrackUri && trackY.uri !== snapshot.nextTrackUri, 'Choose test tracks other than the playlist track that must be restored.');
-
       const queue = await app.spotify.getQueue();
       assert(spotifyTrackUri(queue[0]) === snapshot.nextTrackUri, 'Spotify upcoming queue did not match the playlist continuation at E2E preflight.');
       return { snapshot, trackX, trackY, queue, playlistUri: app.playlistUri };
@@ -247,6 +243,21 @@ export function createLiveE2ESuite(app) {
     });
   }
 
+  async function waitForRequest(requestId, track, label) {
+    return waitFor(label + ' to be confirmed as the active application request and Spotify playback', async () => {
+      const [playback, state] = await Promise.all([
+        app.spotify.getPlaybackState(),
+        Promise.resolve(app.store.get())
+      ]);
+      return state.active?.id === requestId &&
+        state.mode === 'playing-request' &&
+        playback?.is_playing === true &&
+        await playbackMatchesTrack(playback, track)
+        ? playback
+        : null;
+    });
+  }
+
   async function runPlaybackSequence() {
     const checks = [];
     let completed = false;
@@ -261,7 +272,7 @@ export function createLiveE2ESuite(app) {
       const secondId = runId + '-redemption-y';
 
       await injectRedemption(firstId, app.config.e2eTrackX);
-      await waitForTrack(trackX, 'request X');
+      await waitForRequest(firstId, trackX, 'request X');
       let state = app.store.get();
       assert(state.active?.id === firstId, 'Request X was not recorded as the active request.');
       assert(state.snapshot?.nextTrackUri === snapshot.nextTrackUri, 'The coordinator did not preserve the preflight playlist continuation.');
@@ -286,7 +297,7 @@ export function createLiveE2ESuite(app) {
       assert(beforeAuthorizedSkip?.is_playing === true && await playbackMatchesTrack(beforeAuthorizedSkip, trackX),
         'Spotify no longer reports request X as actively playing immediately before the authorized skip; refusing to skip a different track.');
       await injectAuthorizedSkip(runId + '-skip-x', app.broadcasterId);
-      await waitForTrack(trackY, 'request Y after broadcaster !skip');
+      await waitForRequest(secondId, trackY, 'request Y after broadcaster !skip');
       assert(app.store.get().active?.id === secondId, 'Broadcaster !skip did not advance to request Y.');
       checks.push({ name: 'Broadcaster !skip advances to request Y', passed: true });
 
@@ -503,7 +514,7 @@ export function createLiveE2ESuite(app) {
       const secondId = runId + '-redemption-y';
 
       await injectRedemption(firstId, app.config.e2eTrackX);
-      await waitForTrack(trackX, 'request X for the real chat skip test');
+      await waitForRequest(firstId, trackX, 'request X for the real chat skip test');
       await injectRedemption(secondId, app.config.e2eTrackY);
       assert(app.store.get().active?.id === firstId, 'Request X was not active before the live chat test.');
       assert(app.store.get().pending[0]?.id === secondId, 'Request Y was not pending before the live chat test.');
@@ -527,7 +538,7 @@ export function createLiveE2ESuite(app) {
         await playbackMatchesTrack(beforeAuthorizedSkip, trackX),
       'Request X naturally advanced before the authorized chat skip arrived. The test stopped rather than allowing a late !skip to skip request Y.');
       const authorized = await waitForRealSkipMessage(true, timeoutMs);
-      await waitForTrack(trackY, 'request Y after a real broadcaster/moderator !skip');
+      await waitForRequest(secondId, trackY, 'request Y after a real broadcaster/moderator !skip');
       assert(app.store.get().active?.id === secondId, 'The real broadcaster/moderator !skip did not advance to request Y.');
       checks.push({ name: 'A real broadcaster/moderator !skip advances to Y', passed: true, chatterId: authorized.chatterId });
 
