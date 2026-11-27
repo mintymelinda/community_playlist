@@ -241,6 +241,8 @@ export class PlaybackCoordinator {
       playlistUri: this.playlistUri,
       deviceId,
       currentTrackUri: currentUri,
+      currentTrackProgressMs: Number(playback.progress_ms) || 0,
+      currentTrackDurationMs: Number(playback.item?.duration_ms) || 0,
       nextOffset: position.nextOffset,
       nextTrackUri: position.nextTrackUri,
       nextTrackIsrc,
@@ -255,7 +257,7 @@ export class PlaybackCoordinator {
     // Dispatch is allowed only at a known queue boundary. If an active request
     // disappears without an explicit skip/completion transition, do not let a
     // later redemption overwrite Spotify playback.
-    const dispatchableModes = ['idle', 'waiting-for-playlist', 'request-complete', 'skipping'];
+    const dispatchableModes = ['idle', 'request-complete', 'skipping'];
     if (state.active || !dispatchableModes.includes(state.mode)) {
       if (state.pending.length) {
         this.logger.warn('[community-playlist] Pending request dispatch blocked because the queue is not at a confirmed transition boundary.', {
@@ -278,8 +280,14 @@ export class PlaybackCoordinator {
       snapshot = await this.captureSnapshot();
       this.store.update(next => {
         next.snapshot = snapshot;
-        next.mode = 'starting';
+        next.mode = 'waiting-for-playlist';
       });
+      this.logger.info('[community-playlist] Requests are waiting for the current playlist track to finish naturally.', {
+        currentTrackUri: snapshot.currentTrackUri,
+        nextTrackUri: snapshot.nextTrackUri,
+        pendingRequestIds: this.store.get().pending.map(item => item.id)
+      });
+      return;
     }
 
     const request = this.store.get().pending[0];
@@ -425,11 +433,50 @@ export class PlaybackCoordinator {
     return null;
   }
 
+  async pollWaitingForPlaylist() {
+    const state = this.store.get();
+    const snapshot = state.snapshot;
+    if (!snapshot || !state.pending.length || state.mode !== 'waiting-for-playlist') return;
+
+    const playback = await this.spotify.getPlaybackState();
+    if (!playback) return;
+    if (playback.device?.id !== snapshot.deviceId) {
+      this.handoff('Spotify changed playback devices while waiting for the current playlist track to finish.');
+      return;
+    }
+
+    const snapshotPlaylistUri = snapshot.playlistUri || this.playlistUri;
+    if (playback.context?.uri !== snapshotPlaylistUri) {
+      this.handoff('Spotify playback left the saved playlist before the current track finished. Requests were preserved.');
+      return;
+    }
+
+    const currentUri = trackUri(playback);
+    const naturallyAdvanced = Boolean(
+      playback.is_playing === true &&
+      snapshot.nextTrackUri &&
+      currentUri === snapshot.nextTrackUri
+    );
+    if (!naturallyAdvanced) return;
+
+    this.logger.info('[community-playlist] The original playlist track finished naturally; starting the queued viewer requests.', {
+      previousTrackUri: snapshot.currentTrackUri,
+      nextTrackUri: snapshot.nextTrackUri,
+      pendingRequestIds: state.pending.map(item => item.id)
+    });
+    this.store.update(next => { next.mode = 'request-complete'; });
+    await this.pump();
+  }
+
   async poll() {
     if (!this.started) return;
     const currentState = this.store.get();
     if (!currentState.active) {
-      if (currentState.mode !== 'handoff' && currentState.pending.length) await this.pump();
+      if (currentState.mode === 'waiting-for-playlist') {
+        await this.pollWaitingForPlaylist();
+      } else if (currentState.mode !== 'handoff' && currentState.pending.length) {
+        await this.pump();
+      }
       return;
     }
 
