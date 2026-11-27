@@ -643,6 +643,13 @@ test('recovers an active request after reload when Spotify still plays that requ
   });
   const activeRequest = request('reload-active', { ...tracks[2], name: 'X' });
   await firstCoordinator.enqueue(activeRequest);
+  spotify.current = {
+    device: { id: deviceId }, context: { type: 'playlist', uri: playlistUri },
+    item: tracks[1], is_playing: true, shuffle_state: false, repeat_state: 'off', progress_ms: 100
+  };
+  firstCoordinator.started = true;
+  await firstCoordinator.poll();
+  firstCoordinator.started = false;
   const reloadedStore = new QueueStore(storage);
   const reloadedCoordinator = new PlaybackCoordinator({
     spotify, store: reloadedStore, playlistUri, playlistId: 'playlist1',
@@ -670,6 +677,18 @@ test('recovers by advancing to the next viewer request if Spotify already resume
   });
   await firstCoordinator.enqueue(request('reload-complete-x', { ...tracks[2], name: 'X' }));
   await firstCoordinator.enqueue(request('reload-pending-y', { ...tracks[3], name: 'Y' }));
+  spotify.current = {
+    device: { id: deviceId },
+    context: { type: 'playlist', uri: playlistUri },
+    item: tracks[1],
+    is_playing: true,
+    shuffle_state: false,
+    repeat_state: 'off',
+    progress_ms: 100
+  };
+  firstCoordinator.started = true;
+  await firstCoordinator.poll();
+  firstCoordinator.started = false;
   firstStore.update(state => { state.active.lastProgressMs = tracks[2].duration_ms - 2000; });
 
   spotify.current = {
