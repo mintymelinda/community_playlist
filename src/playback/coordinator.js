@@ -254,6 +254,9 @@ export class PlaybackCoordinator {
 
   async pump() {
     const state = this.store.get();
+    // While waiting for the broadcaster's current playlist track to finish,
+    // new redemptions only extend the pending FIFO; they must not interrupt it.
+    if (state.mode === 'waiting-for-playlist') return;
     // Dispatch is allowed only at a known queue boundary. If an active request
     // disappears without an explicit skip/completion transition, do not let a
     // later redemption overwrite Spotify playback.
@@ -457,7 +460,18 @@ export class PlaybackCoordinator {
       snapshot.nextTrackUri &&
       currentUri === snapshot.nextTrackUri
     );
-    if (!naturallyAdvanced) return;
+    const naturallyEndedAtPlaylistEnd = Boolean(
+      !snapshot.nextTrackUri &&
+      currentUri === snapshot.currentTrackUri &&
+      playback.is_playing === false &&
+      Number(snapshot.currentTrackDurationMs) > 0 &&
+      Number(playback.progress_ms) >= Number(snapshot.currentTrackDurationMs) - 2000
+    );
+    if (currentUri === snapshot.currentTrackUri && !naturallyEndedAtPlaylistEnd) return;
+    if (!naturallyAdvanced && !naturallyEndedAtPlaylistEnd) {
+      this.handoff('Spotify moved away from the expected playlist boundary while waiting for the current track to finish. Requests were preserved.');
+      return;
+    }
 
     this.logger.info('[community-playlist] The original playlist track finished naturally; starting the queued viewer requests.', {
       previousTrackUri: snapshot.currentTrackUri,
@@ -625,6 +639,12 @@ export class PlaybackCoordinator {
   async reconcile() {
     const state = this.store.get();
     if (!state.active) {
+      if (state.snapshot && state.mode === 'waiting-for-playlist' && state.pending.length) {
+        // A restart must preserve the wait rather than discard the captured
+        // playlist position or begin requests by interrupting the current item.
+        await this.pollWaitingForPlaylist();
+        return;
+      }
       if (state.snapshot) {
         this.store.update(next => {
           next.snapshot = null;
