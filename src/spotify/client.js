@@ -112,6 +112,11 @@ export class SpotifyClient {
     return normalized;
   }
 
+  skipToNext(deviceId) {
+    const query = deviceId ? '?device_id=' + encodeURIComponent(deviceId) : '';
+    return this.api('/me/player/next' + query, { method: 'POST' });
+  }
+
   playTrack(uri, deviceId) {
     const query = deviceId ? '?device_id=' + encodeURIComponent(deviceId) : '';
     return this.api('/me/player/play' + query, {
