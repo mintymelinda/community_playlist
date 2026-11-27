@@ -63,7 +63,6 @@ async function main() {
     SPOTIFY_PLAYLIST_URI: String(process.env.SPOTIFY_PLAYLIST_URI || '').trim(),
     E2E_TRACK_X: String(process.env.E2E_TRACK_X || '').trim(),
     E2E_TRACK_Y: String(process.env.E2E_TRACK_Y || '').trim(),
-    TWITCH_BROADCASTER_ID: String(process.env.TWITCH_BROADCASTER_ID || '').trim(),
     TWITCH_POWER_UP_ID: String(process.env.TWITCH_POWER_UP_ID || '').trim(),
     SPOTIFY_DEVICE_ID: String(process.env.SPOTIFY_DEVICE_ID || '').trim(),
     POLL_INTERVAL_MS: String(process.env.POLL_INTERVAL_MS || '2000')
