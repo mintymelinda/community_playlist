@@ -21,3 +21,6 @@ jobs:
 
       - name: Run syntax and automated tests
         run: npm run verify
+
+      - name: Build auth service container
+        run: docker build --tag community-playlist-auth:ci .
