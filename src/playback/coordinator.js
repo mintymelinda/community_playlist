@@ -455,7 +455,7 @@ export class PlaybackCoordinator {
     }
 
     const snapshotPlaylistUri = snapshot.playlistUri || this.playlistUri;
-    if (playback.context?.uri !== snapshotPlaylistUri) {
+    if (!isPlaylistContext(this.spotify, playback, this.playlistId)) {
       this.handoff('Spotify playback left the saved playlist before the current track finished. Requests were preserved.');
       return;
     }
@@ -703,7 +703,7 @@ export class PlaybackCoordinator {
     const playback = await this.spotify.getPlaybackState();
     const returnedToPlaylist = playback?.device?.id === state.snapshot.deviceId &&
       trackUri(playback) === state.snapshot.nextTrackUri &&
-      playback.context?.uri === (state.snapshot.playlistUri || this.playlistUri);
+      isPlaylistContext(this.spotify, playback, this.playlistId);
     const matchesActiveRequest = playback?.device?.id === state.snapshot.deviceId &&
       await this.trackMatchesRequest(playback, state.active);
 
