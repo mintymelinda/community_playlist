@@ -49,10 +49,12 @@ function createApp({
     async resolveTrack(input) { return input === 'test-x' ? resolvedX : resolvedY; },
     extractPlaylistId(uri) {
       const value = String(uri);
-      const match = value.match(/spotify:playlist:([A-Za-z0-9]+)/i) ||
-        value.match(/open[.]spotify[.]com[/]playlist[/]([A-Za-z0-9]+)/i);
-      if (!match) throw new Error('Invalid playlist URI');
-      return match[1];
+      const playlistPart = value.includes('open.spotify.com/playlist/')
+        ? value.split('/playlist/')[1]
+        : value.split(':').at(-1);
+      const playlistId = playlistPart.split(/[?#/]/)[0];
+      if (!playlistId) throw new Error('Invalid playlist URI');
+      return playlistId;
     },
     async setShuffle(enabled, targetDevice) {
       calls.push({ method: 'setShuffle', enabled, targetDevice });
