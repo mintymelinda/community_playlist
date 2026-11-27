@@ -28,7 +28,7 @@ function createApp({
   const playback = {
     device: { id: deviceId },
     context: initialContext ? {
-      type: initialContext.startsWith('spotify:playlist:') ? 'playlist' : 'album',
+      type: /(?:spotify:playlist:|open\\.spotify\\.com\\/playlist\\/)/i.test(initialContext) ? 'playlist' : 'album',
       uri: initialContext
     } : null,
     item: tracks[1],
@@ -47,7 +47,11 @@ function createApp({
     },
     async getQueue() { return [tracks[2], tracks[3]]; },
     async resolveTrack(input) { return input === 'test-x' ? resolvedX : resolvedY; },
-    extractPlaylistId(uri) { return uri.split(':').at(-1); },
+    extractPlaylistId(uri) {
+      const match = String(uri).match(/(?:spotify:playlist:|open[.]spotify[.]com\\/playlist\\/)([A-Za-z0-9]+)/i);
+      if (!match) throw new Error('Invalid playlist URI');
+      return match[1];
+    },
     async setShuffle(enabled, targetDevice) {
       calls.push({ method: 'setShuffle', enabled, targetDevice });
       playback.shuffle_state = enabled;
@@ -105,7 +109,7 @@ function createApp({
   return { app, calls, playback };
 }
 
-test('preflight loads the selected playlist, starts it, clears only the E2E request store, and restores shuffle/repeat', async () => {
+test('preflight loads the selected playlist, preserves shuffle, clears only the E2E request store, and restores repeat', async () => {
   const { app, calls, playback } = createApp();
   const suite = createLiveE2ESuite(app);
 
@@ -116,8 +120,9 @@ test('preflight loads the selected playlist, starts it, clears only the E2E requ
   assert.equal(result.playlistUri, playlistUri);
   assert.equal(playback.context.uri, playlistUri);
   assert.equal(playback.is_playing, true);
-  assert.equal(playback.shuffle_state, false);
+  assert.equal(playback.shuffle_state, true);
   assert.equal(playback.repeat_state, 'off');
+  assert.equal(calls.some(call => call.method === 'setShuffle'), false);
   assert.equal(app.store.get().pending.length, 0);
   assert.deepEqual(calls.find(call => call.method === 'playPlaylistAt'), {
     method: 'playPlaylistAt',
@@ -284,4 +289,28 @@ test('matches Spotify relinked playback to the originally requested track URI', 
   assert.equal(playbackTrackUri(playback), 'spotify:track:original-request');
   assert.equal(playbackTrackUri({ item: { uri: 'spotify:track:ordinary' } }), 'spotify:track:ordinary');
   assert.equal(playbackTrackUri(null), null);
+});
+
+
+test('preflight matches a live playlist web URL by its Spotify ID and uses the canonical playlist URI', async () => {
+  const livePlaylistUrl = 'https://open.spotify.com/playlist/target-playlist?si=live-session';
+  const { app, calls, playback } = createApp({
+    configuredPlaylist: 'spotify:playlist:configured-default',
+    initialContext: livePlaylistUrl,
+    shuffle: true,
+    repeat: 'off'
+  });
+  const suite = createLiveE2ESuite(app);
+
+  const result = await suite.preflight();
+
+  assert.equal(result.playlistUri, playlistUri);
+  assert.equal(app.playlistId, 'target-playlist');
+  assert.equal(app.coordinator.playlistId, 'target-playlist');
+  assert.equal(app.playlistUri, playlistUri);
+  assert.equal(playback.context.uri, livePlaylistUrl);
+  assert.equal(calls.some(call => call.method === 'playPlaylistAt'), false);
+  assert.equal(calls.some(call => call.method === 'setShuffle'), false);
+
+  await suite.restorePlaybackSettings();
 });
