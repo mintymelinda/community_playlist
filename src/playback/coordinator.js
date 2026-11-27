@@ -383,8 +383,13 @@ export class PlaybackCoordinator {
     const returnedToPlaylist = snapshot.nextTrackUri &&
       currentUri === snapshot.nextTrackUri &&
       playback.context?.uri === this.playlistUri;
+    const matchesActiveRequest = await this.trackMatchesRequest(playback, active);
 
-    if (returnedToPlaylist) {
+    // A viewer may request the same recording that is next in the playlist.
+    // If Spotify still reports that recording as the active item but progress
+    // has not reached its end, keep it classified as the viewer request rather
+    // than mistaking its matching URI/context for a playlist handoff.
+    if (returnedToPlaylist && !(matchesActiveRequest && !this.hasNaturallyCompleted(active))) {
       if (!this.hasNaturallyCompleted(active)) {
         const staleReadGraceMs = Math.max(10000, this.pollIntervalMs * 3);
         if (Date.now() - (Number(active.startedAt) || Date.now()) <= staleReadGraceMs) {
@@ -411,7 +416,7 @@ export class PlaybackCoordinator {
       return;
     }
 
-    if (await this.trackMatchesRequest(playback, active)) {
+    if (matchesActiveRequest) {
       const progress = Number(playback.progress_ms) || 0;
       const duration = Number(playback.item?.duration_ms) || active.durationMs || 0;
       this.store.update(next => {
