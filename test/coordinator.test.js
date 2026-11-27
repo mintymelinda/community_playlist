@@ -698,3 +698,46 @@ test('hands off without replay when reload finds an unrelated Spotify track or d
     coordinator.stop();
   }
 });
+
+test('restores a playlist track when Spotify reports its market-relinked playable URI', async () => {
+  const { spotify, store, coordinator } = createCoordinator();
+  const expectedUri = tracks[1].uri;
+  const playableUri = 'spotify:track:market-relinked-playlist-track';
+  const isrc = 'USRC17607839';
+
+  spotify.getPlaylistItems = async () => [
+    tracks[0],
+    { ...tracks[1], isrc },
+    tracks[2],
+    tracks[3]
+  ];
+  spotify.getQueue = async () => [
+    { ...tracks[1], isrc },
+    tracks[2],
+    tracks[3]
+  ];
+  spotify.playPlaylistAt = async (uri, offset, targetDevice) => {
+    spotify.restored.push({ uri, offset, targetDevice });
+    spotify.current = {
+      device: { id: targetDevice },
+      context: { type: 'playlist', uri },
+      item: { uri: playableUri, name: 'Market relinked playlist track', duration_ms: 180000 },
+      is_playing: true,
+      progress_ms: 0
+    };
+  };
+  spotify.getTrack = async uri => {
+    assert.equal(uri, playableUri);
+    return { uri: playableUri, isrc };
+  };
+
+  await coordinator.enqueue(request('request-before-playlist-restore', tracks[2]));
+
+  assert.equal(store.get().snapshot.nextTrackUri, expectedUri);
+  assert.equal(store.get().snapshot.nextTrackIsrc, isrc);
+  assert.equal(await coordinator.skip(), true);
+  assert.equal(store.get().mode, 'idle');
+  assert.equal(store.get().snapshot, null);
+  assert.deepEqual(spotify.restored, [{ uri: playlistUri, offset: 1, targetDevice: deviceId }]);
+  assert.equal(spotify.current.item.uri, playableUri);
+});
