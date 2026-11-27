@@ -84,3 +84,43 @@ test('SpotifyClient sends the Connect skip-to-next command to the selected devic
   assert.equal(request.url, 'https://api.spotify.com/v1/me/player/next?device_id=device-1');
   assert.equal(request.options.method, 'POST');
 });
+
+test('SpotifyClient skips an unavailable top search result and selects the next playable track', async () => {
+  let requestedUrl;
+  const client = new SpotifyClient({
+    auth: { getAccessToken: async () => 'access' },
+    fetchImpl: async url => {
+      requestedUrl = url;
+      return Response.json({
+        tracks: {
+          items: [
+            {
+              id: 'unavailable-track',
+              uri: 'spotify:track:unavailable-track',
+              type: 'track',
+              name: 'Unavailable edition',
+              artists: [{ name: 'Artist' }],
+              duration_ms: 180000,
+              is_playable: false
+            },
+            {
+              id: 'playable-track',
+              uri: 'spotify:track:playable-track',
+              type: 'track',
+              name: 'Playable edition',
+              artists: [{ name: 'Artist' }],
+              duration_ms: 180000,
+              is_playable: true
+            }
+          ]
+        }
+      });
+    }
+  });
+
+  const track = await client.resolveTrack('Song by Artist');
+
+  assert.match(requestedUrl, /limit=10/);
+  assert.equal(track.uri, 'spotify:track:playable-track');
+  assert.equal(track.name, 'Playable edition');
+});
