@@ -131,6 +131,29 @@ test('preflight loads the selected playlist, starts it, clears only the E2E requ
   assert.equal(playback.repeat_state, 'context');
 });
 
+test('preflight keeps the currently playing playlist instead of switching to the configured default', async () => {
+  const challengeRunUri = 'spotify:playlist:challenge-run';
+  const lowFlyUri = 'spotify:playlist:low-fly';
+  const { app, calls, playback } = createApp({
+    configuredPlaylist: challengeRunUri,
+    initialContext: lowFlyUri,
+    shuffle: false,
+    repeat: 'off'
+  });
+  const suite = createLiveE2ESuite(app);
+
+  const result = await suite.preflight();
+
+  assert.equal(result.playlistUri, lowFlyUri);
+  assert.equal(app.playlistUri, lowFlyUri);
+  assert.equal(app.playlistId, 'low-fly');
+  assert.equal(app.coordinator.playlistUri, lowFlyUri);
+  assert.equal(playback.context.uri, lowFlyUri);
+  assert.equal(calls.some(call => call.method === 'playPlaylistAt'), false);
+
+  await suite.restorePlaybackSettings();
+});
+
 test('preflight uses the active playlist when no playlist URI is configured and resumes it if paused', async () => {
   const { app, calls, playback } = createApp({
     configuredPlaylist: '',
