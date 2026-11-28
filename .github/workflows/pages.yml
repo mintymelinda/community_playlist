@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "index.html"
-      - "overlay.html"
+      - "site/**"
       - "src/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -32,8 +31,8 @@ jobs:
       - name: Assemble standalone overlay and controller
         run: |
           mkdir -p dist
-          cp index.html dist/index.html
-          cp overlay.html dist/overlay.html
+          cp site/index.html dist/index.html
+          cp site/overlay.html dist/overlay.html
           cp -R src dist/src
       - uses: actions/upload-pages-artifact@v3
         with:
