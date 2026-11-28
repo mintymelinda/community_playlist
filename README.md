@@ -30,7 +30,7 @@ Use the hosted signup flow to connect Twitch and Spotify once and generate a pri
 
 ## Legacy manual setup
 
-1. Register a Twitch application as a **public client**. The controller uses Device Code authorization and requests only \`bits:read\` and \`user:read:chat\`. Authorize with the broadcaster's Twitch account.
+1. Register a Twitch application as a **public client**. The controller uses Device Code authorization and requests bits:read, user:read:chat, and user:write:chat. Authorize with the broadcaster's Twitch account.
 2. Register a Spotify app. Add the exact URL serving \`index.html\` to its redirect URI allowlist.
 3. Copy \`config.example.js\` to \`config.local.js\`. Set the Twitch and Spotify client IDs and exact Spotify redirect URI. Leave \`playlistUri\` blank to follow the playlist already playing on the broadcaster's Spotify Connect device; set it only if you intentionally want to pin the controller to one playlist. The Twitch account that completes OAuth is the channel identity; no broadcaster ID needs to be configured. Leave \`powerUpId\` blank only when exactly one enabled text-input Power-up exists; otherwise set its ID.
 4. Host the files from a static HTTPS origin. Do not open the page as a \`file://\` URL. Keep \`config.local.js\` on the same origin as the application and do not commit it.
