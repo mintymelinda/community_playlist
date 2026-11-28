@@ -177,6 +177,7 @@ class CommunityPlaylistApp {
     } catch (error) {
       this.eventSub.stop();
       this.coordinator.stop();
+      this.debugChat({ event: 'eventsub-connect-failed', error: error.message, channel: this.twitchIdentity.login, broadcasterId: this.broadcasterId });
       throw error;
     }
 
