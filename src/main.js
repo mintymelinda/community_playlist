@@ -24,29 +24,20 @@ function validateConfig(config) {
 class CommunityPlaylistApp {
   constructor(config) {
     this.config = config;
-    this.e2eMode = config.e2eMode === true &&
-      location.protocol === 'http:' &&
-      location.hostname === '127.0.0.1';
-    this.autoStartKey = this.e2eMode ? 'community-playlist-e2e-auto-start' : AUTO_START_KEY;
-    const queueKey = this.e2eMode ? 'community-playlist-e2e-queue-v1' : 'community-playlist-queue-v1';
-    const storagePrefix = this.e2eMode ? 'community-playlist-e2e-' : 'community-playlist-';
+    this.autoStartKey = AUTO_START_KEY;
     const authStorage = config.provisioned ? localStorage : sessionStorage;
     if (config.provisioned) {
       if (config.twitchToken) localStorage.setItem('community-playlist-twitch-token', JSON.stringify(config.twitchToken));
       if (config.spotifyToken) localStorage.setItem('community-playlist-spotify-token', JSON.stringify(config.spotifyToken));
     }
-    if (this.e2eMode && sessionStorage.getItem('community-playlist-e2e-initialized') !== '1') {
-      localStorage.removeItem(queueKey);
-      sessionStorage.setItem('community-playlist-e2e-initialized', '1');
-    }
-    this.store = new QueueStore(localStorage, queueKey, config.maxPendingRequests || 100);
+    this.store = new QueueStore(localStorage, 'community-playlist-queue-v1', config.maxPendingRequests || 100);
     this.twitchAuth = new TwitchAuth({
       clientId: config.twitchClientId,
       scopes: ['bits:read', 'user:read:chat', 'user:write:chat'],
-      tokenStore: new TokenStore(authStorage, storagePrefix + 'twitch-token')
+      tokenStore: new TokenStore(authStorage, 'community-playlist-twitch-token')
     });
-    const spotifyTokenStore = new TokenStore(authStorage, storagePrefix + 'spotify-token');
-    const spotifyPkceStore = new TokenStore(sessionStorage, storagePrefix + 'spotify-pkce');
+    const spotifyTokenStore = new TokenStore(authStorage, 'community-playlist-spotify-token');
+    const spotifyPkceStore = new TokenStore(sessionStorage, 'community-playlist-spotify-pkce');
     this.spotifyAuth = new SpotifyAuth({
       clientId: config.spotifyClientId,
       redirectUri: config.spotifyRedirectUri,
@@ -304,20 +295,6 @@ async function bootstrap() {
     status: () => app.status()
   };
 
-  if (app.e2eMode) {
-    const { createLiveE2ESuite } = await import('./e2e/live-suite.js');
-    const suite = createLiveE2ESuite(app);
-    globalThis.communityPlaylist.e2e = {
-      preflight: () => suite.preflight(),
-      preparePlayback: () => suite.preparePlayback(),
-      cleanup: () => suite.restorePlaybackSettings(),
-      runPlaybackSequence: () => suite.runPlaybackSequence(),
-      runRealChatSkipTest: timeoutMs => suite.runRealChatSkipTest(timeoutMs),
-      verifyProviderTokenRefresh: () => suite.verifyProviderTokenRefresh(),
-      verifyEventSubReconnect: timeoutMs => suite.verifyEventSubReconnect(timeoutMs),
-      waitForRealRedemption: timeoutMs => suite.waitForRealRedemption(timeoutMs)
-    };
-  }
 
   console.info('[community-playlist] Headless controller loaded.');
   if (config.autoStart || sessionStorage.getItem(app.autoStartKey) === '1') {
