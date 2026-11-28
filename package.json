@@ -11,7 +11,6 @@
     "check": "node scripts/check.js",
     "test": "node --test",
     "verify": "npm run check && npm test",
-    "e2e:serve": "node scripts/e2e/server.js",
     "auth:serve": "node --env-file=.env auth-service/server.js"
   }
 }

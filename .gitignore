@@ -2,7 +2,6 @@
 .env
 .env.*
 !.env.example
-!.env.e2e.example
 config.local.js
 *.token
 *.tokens
