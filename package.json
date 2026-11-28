@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node scripts/check.js",
+    "check": "node tests/check.js",
     "test": "node --test",
     "verify": "npm run check && npm test",
     "auth:serve": "node --env-file=.env auth-service/server.js"
