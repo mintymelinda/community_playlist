@@ -6,7 +6,7 @@ Spotify itself handles all audio playback. This project does not capture, proces
 
 ## Implemented
 
-- Twitch public-client Device Code authorization, token validation, one-time refresh-token rotation, and reconnect handling.
+- Twitch public-client PKCE Authorization Code authorization, token validation, one-time refresh-token rotation, and reconnect handling.
 - Automatic discovery of the broadcaster's Custom Power-ups; selects the only enabled, in-stock text-input Power-up or requires an explicit ID if several are available.
 - Twitch EventSub WebSocket subscriptions for Custom Power-up redemptions and chat messages, including keepalive, session migration, reconnect, and duplicate-delivery handling.
 - Spotify Authorization Code with PKCE, token refresh, device selection, playlist inspection, Spotify track URL/URI parsing, and text search.
@@ -30,11 +30,11 @@ Use the hosted signup flow to connect Twitch and Spotify once and generate a pri
 
 ## Legacy manual setup
 
-1. Register a Twitch application as a **public client**. The controller uses Device Code authorization and requests bits:read, user:read:chat, and user:write:chat. Authorize with the broadcaster's Twitch account.
+1. Register a Twitch application as a **public client**. The controller uses PKCE-enhanced Authorization Code authorization and requests bits:read, user:read:chat, and user:write:chat. Register the hosted setup callback URI `https://YOUR-AUTH-HOST/oauth/twitch/callback`, then authorize with the broadcaster's Twitch account.
 2. Register a Spotify app. Add the exact URL serving \`index.html\` to its redirect URI allowlist.
 3. Copy \`config.example.js\` to \`config.local.js\`. Set the Twitch and Spotify client IDs and exact Spotify redirect URI. Leave \`playlistUri\` blank to follow the playlist already playing on the broadcaster's Spotify Connect device; set it only if you intentionally want to pin the controller to one playlist. The Twitch account that completes OAuth is the channel identity; no broadcaster ID needs to be configured. Leave \`powerUpId\` blank only when exactly one enabled text-input Power-up exists; otherwise set its ID.
 4. Host the files from a static HTTPS origin. Do not open the page as a \`file://\` URL. Keep \`config.local.js\` on the same origin as the application and do not commit it.
-5. Open the page in the browser tab that will remain active. Open the browser developer console and run \`communityPlaylist.start()\`. Spotify authorization redirects the current tab to Spotify and returns to the configured page. Twitch Device Code authorization then prints a one-time verification URL and code to the console; enter the code at that URL.
+5. Open the page in the browser tab that will remain active. Open the browser developer console and run \`communityPlaylist.start()\`. Spotify authorization redirects the current tab to Spotify and returns to the configured page. Twitch authorization redirects the browser to Twitch and returns to the registered callback.
 6. Open Spotify on the intended Connect device and start the playlist you want to use. Turn repeat off; shuffle may remain on. Requests are accepted only while the configured playlist is playing on the selected device.
 
 Example local configuration:
