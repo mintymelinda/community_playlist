@@ -73,7 +73,6 @@ jobs:
       SPOTIFY_PLAYLIST_URI: ${{ vars.SPOTIFY_PLAYLIST_URI }}
       E2E_TRACK_X: ${{ vars.E2E_TRACK_X }}
       E2E_TRACK_Y: ${{ vars.E2E_TRACK_Y }}
-      TWITCH_BROADCASTER_ID: ${{ vars.TWITCH_BROADCASTER_ID }}
       TWITCH_POWER_UP_ID: ${{ vars.TWITCH_POWER_UP_ID }}
       SPOTIFY_DEVICE_ID: ${{ vars.SPOTIFY_DEVICE_ID }}
       RUN_REAL_CHAT_TEST: ${{ inputs.run_real_chat_test }}

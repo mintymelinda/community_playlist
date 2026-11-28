@@ -42,7 +42,7 @@ class CommunityPlaylistApp {
     this.store = new QueueStore(localStorage, queueKey, config.maxPendingRequests || 100);
     this.twitchAuth = new TwitchAuth({
       clientId: config.twitchClientId,
-      scopes: ['bits:read', 'user:read:chat'],
+      scopes: ['bits:read', 'user:read:chat', 'user:write:chat'],
       tokenStore: new TokenStore(authStorage, storagePrefix + 'twitch-token')
     });
     const spotifyTokenStore = new TokenStore(authStorage, storagePrefix + 'spotify-token');
@@ -80,7 +80,11 @@ class CommunityPlaylistApp {
     this.controllerLockRelease = null;
     this.controllerLockTask = null;
     this.broadcasterId = null;
+    this.twitchIdentity = null;
     this.powerUp = null;
+    this.debugEnabled = new URLSearchParams(location.search).get('debug') === 'true';
+    this.debugQueue = Promise.resolve();
+    this.lastDebugMessageAt = 0;
   }
 
   async acquireControllerLock() {
@@ -148,11 +152,10 @@ class CommunityPlaylistApp {
       return { mode: 'spotify-authorization' };
     }
 
-    const twitchIdentity = await this.twitchAuth.validate();
-    this.broadcasterId = this.config.broadcasterId || twitchIdentity.user_id;
-    if (String(this.broadcasterId) !== String(twitchIdentity.user_id)) {
-      throw new Error('Twitch must be authorized by the broadcaster account configured for this channel.');
-    }
+    this.twitchIdentity = await this.twitchAuth.validate();
+    // The Twitch account that completes OAuth is the channel identity. The
+    // application owner/client ID is not a separate chat user or moderator.
+    this.broadcasterId = this.twitchIdentity.user_id;
 
     const powerUp = await this.discoverPowerUp();
     this.powerUp = powerUp;
@@ -165,7 +168,8 @@ class CommunityPlaylistApp {
       powerUpId: powerUp.id,
       store: this.store,
       onRedemption: request => this.redemptionProcessor.accept(request),
-      onChatCommand: command => this.handleChatCommand(command)
+      onChatCommand: command => this.handleChatCommand(command),
+      onDebug: details => this.debugChat(details)
     });
 
     try {
@@ -173,11 +177,13 @@ class CommunityPlaylistApp {
     } catch (error) {
       this.eventSub.stop();
       this.coordinator.stop();
+      this.debugChat({ event: 'eventsub-connect-failed', error: error.message, channel: this.twitchIdentity.login, broadcasterId: this.broadcasterId });
       throw error;
     }
 
     this.started = true;
     console.info('[community-playlist] Controller is running. Power-up: ' + powerUp.title + '. Playlist: ' + (this.playlistUri || 'selected from current Spotify playback'));
+    this.debugChat({ event: 'controller-started', channel: this.twitchIdentity.login, broadcasterId: this.broadcasterId, powerUpId: powerUp.id, eventSubSessionId: this.eventSub.sessionId, debug: this.debugEnabled });
     return this.status();
   }
 
@@ -197,10 +203,35 @@ class CommunityPlaylistApp {
   }
 
   async handleChatCommand(command) {
-    if (command.command === 'skip') {
+    if (command.command !== 'skip') return;
+    console.info('[community-playlist] Authorized !skip received.', { user: command.user || null });
+    this.debugChat({ event: 'skip-command-received', user: command.user || null, playback: this.coordinator.status() });
+    try {
       const skipped = await this.coordinator.skip();
-      if (skipped) console.info('[community-playlist] Moderator skip accepted.');
+      console.info('[community-playlist] !skip processing finished.', { skipped, playback: this.coordinator.status() });
+      this.debugChat({ event: 'skip-command-result', skipped, playback: this.coordinator.status(), reason: skipped ? 'skip accepted' : 'Spotify playback state/device/playlist context did not allow a skip' });
+    } catch (error) {
+      console.error('[community-playlist] !skip failed.', error);
+      this.debugChat({ event: 'skip-command-error', error: error.message, playback: this.coordinator.status() });
+      throw error;
     }
+  }
+
+  debugChat(details) {
+    if (!this.debugEnabled || !this.twitchIdentity?.user_id) return Promise.resolve();
+    const text = '[CP debug] ' + (typeof details === 'string' ? details : JSON.stringify(details));
+    const message = text.length > 450 ? text.slice(0, 447) + '...' : text;
+    this.debugQueue = this.debugQueue.catch(() => {}).then(async () => {
+      const wait = Math.max(0, 1100 - (Date.now() - this.lastDebugMessageAt));
+      if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+      const result = await this.twitchAuth.api('/chat/messages', {
+        method: 'POST',
+        body: { broadcaster_id: this.broadcasterId, sender_id: this.twitchIdentity.user_id, message }
+      });
+      this.lastDebugMessageAt = Date.now();
+      if (result.data?.[0]?.is_sent === false) throw new Error(result.data[0].drop_reason?.message || 'Twitch did not send the debug message.');
+    }).catch(error => console.warn('[community-playlist] Could not send Twitch chat diagnostics.', error));
+    return this.debugQueue;
   }
 
   async stop() {
@@ -219,7 +250,7 @@ class CommunityPlaylistApp {
   status() {
     return {
       running: this.started,
-      broadcasterId: this.broadcasterId,
+      channel: this.twitchIdentity?.login || null,
       powerUp: this.powerUp ? { id: this.powerUp.id, title: this.powerUp.title } : null,
       playlistUri: this.playlistUri,
       playback: this.coordinator.status()

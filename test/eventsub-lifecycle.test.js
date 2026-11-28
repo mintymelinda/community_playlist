@@ -106,6 +106,7 @@ function createEventSub() {
   const subscriptions = [];
   const redemptions = [];
   const commands = [];
+  const debugEvents = [];
   const log = { info() {}, warn() {}, error() {} };
   const store = {
     messages: new Set(),
@@ -127,12 +128,13 @@ function createEventSub() {
     powerUpId,
     onRedemption: async value => redemptions.push(value),
     onChatCommand: async value => commands.push(value),
+    onDebug: value => debugEvents.push(value),
     store,
     logger: log,
     WebSocketImpl: FakeWebSocket,
     timers
   });
-  return { eventSub, timers, subscriptions, redemptions, commands };
+  return { eventSub, timers, subscriptions, redemptions, commands, debugEvents };
 }
 
 async function connect(eventSub, sessionId = 'session-1') {
@@ -157,6 +159,10 @@ test('opens EventSub and subscribes to redemption and broadcaster chat events', 
   assert.deepEqual(env.subscriptions.map(item => item.transport.session_id), [
     'session-1',
     'session-1'
+  ]);
+  assert.deepEqual(env.subscriptions.map(item => item.condition), [
+    { broadcaster_user_id: broadcasterId, reward_id: powerUpId },
+    { broadcaster_user_id: broadcasterId, user_id: broadcasterId }
   ]);
 
   await env.eventSub.handleNotification({
@@ -252,6 +258,11 @@ test('stop closes active sockets and cancels reconnect and keepalive timers', as
 
 test('ignores unauthorized real chat messages and deduplicates authorized !skip events', async () => {
   const env = createEventSub();
+  const ownDebugMessage = chatNotification(broadcasterId, broadcasterId, 'own-debug-message');
+  ownDebugMessage.payload.event.message.text = '[CP debug] {"event":"controller-started"}';
+  await env.eventSub.handleNotification(ownDebugMessage);
+  assert.equal(env.debugEvents.length, 0, 'own diagnostics must not echo back into the debug sender');
+
   const unauthorized = chatNotification(
     broadcasterId,
     'ordinary-viewer',
@@ -262,6 +273,12 @@ test('ignores unauthorized real chat messages and deduplicates authorized !skip 
   assert.equal(env.commands.length, 0);
   assert.equal(env.eventSub.store.messages.has('unauthorized-skip'), false);
 
+  const broadcaster = chatNotification(broadcasterId, broadcasterId, 'broadcaster-skip');
+  await env.eventSub.handleNotification(broadcaster);
+  assert.equal(env.commands.length, 1);
+  assert.equal(env.commands[0].command, 'skip');
+  assert.equal(env.debugEvents.some(item => item.event === 'skip-command-authorized'), true);
+
   const authorized = chatNotification(
     broadcasterId,
     'moderator-1',
@@ -271,7 +288,7 @@ test('ignores unauthorized real chat messages and deduplicates authorized !skip 
   await env.eventSub.handleNotification(authorized);
   await env.eventSub.handleNotification(authorized);
 
-  assert.equal(env.commands.length, 1);
-  assert.equal(env.commands[0].command, 'skip');
+  assert.equal(env.commands.length, 2);
+  assert.equal(env.commands[1].command, 'skip');
   assert.equal(env.eventSub.store.messages.has('authorized-skip'), true);
 });
