@@ -35,3 +35,7 @@ This service is provided as-is, without warranties or guarantees. The operator a
 **Important Spotify restriction:** Spotify's Platform / Developer Terms specifically restrict using the Spotify Platform or API to create a streaming service. They also impose restrictions on broadcasting Spotify content and synchronizing sound recordings with visual media. This project does not grant permission or an exception to those restrictions. Before using it, review Spotify's current [Developer Terms](https://developer.spotify.com/terms) and [Developer Policy](https://developer.spotify.com/policy), and determine whether your intended use is permitted. Do not use the service in a way that violates Spotify's terms. You are responsible for obtaining any permissions or approvals required from Spotify.
 
 Use of this service is at your own risk. Nothing in this README is legal advice or a representation that Spotify has approved this service.
+
+## Thanks
+
+Special thanks to **[@Vinny_Vega](https://github.com/Vinny_Vega)** for E2E/integration testing.
