@@ -22,6 +22,11 @@ The OBS Browser Source is intentionally invisible; it runs the controller in the
 - OBS, with the generated URL added as a Browser Source.
 - A Spotify Connect device available to play music.
 
+## Moderation
+
+Moderators and Broadcasters(the streamer) can use the following command
+- `!skip` to skip any request or natural playlist item
+
 ## Keep your OBS URL private
 
 The generated OBS URL contains authorization credentials for the connected Twitch and Spotify accounts. Treat it like a password. Do not post it publicly, share it with viewers, or include it in screenshots or support requests.
