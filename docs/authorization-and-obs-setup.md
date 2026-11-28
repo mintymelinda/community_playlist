@@ -20,7 +20,7 @@ The Node.js/Docker service handles signup, OAuth callbacks, and encrypted server
 
 ## One-time operator setup
 
-Register a Twitch public OAuth application and a Spotify application. Configure their public client IDs in the service's .env file using .env.example as a template. These IDs are public values, not client secrets. No provider client secret is used. Register the exact Spotify redirect URI https://YOUR-AUTH-HOST/oauth/spotify/callback in the Spotify app. Put the service behind an HTTPS reverse proxy that forwards X-Forwarded-Host and X-Forwarded-Proto.
+Register a Twitch public OAuth application and a Spotify application. Configure their public client IDs in the service's .env file using .env.example as a template. These IDs are public values, not client secrets. Twitch uses PKCE-enhanced Authorization Code authorization; register the exact redirect URI https://spotify.bigstorageparty.synology.me/oauth/twitch/callback in the Twitch application. Register the exact Spotify callback URI for your deployed service in the Spotify app. Put the service behind an HTTPS reverse proxy that forwards X-Forwarded-Host and X-Forwarded-Proto.
 
 Enable GitHub Pages with GitHub Actions as the source in repository Settings → Pages. The pages.yml workflow publishes only overlay.html and src/ to the independent static host. OVERLAY_BASE_URL must point to that static overlay.html URL. The OAuth client IDs and overlay URL are service-level public configuration, not per-user secrets. Users do not edit Compose or provide secrets.
 
