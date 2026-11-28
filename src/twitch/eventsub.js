@@ -226,6 +226,10 @@ export class TwitchEventSub {
     }
 
     if (type === 'channel.chat.message') {
+      const messageText = String(event?.message?.text || '');
+      // Our own diagnostics are delivered back through the same EventSub
+      // subscription. Ignore them to prevent a self-amplifying chat loop.
+      if (String(event?.chatter_user_id || '') === String(this.broadcasterId) && messageText.startsWith('[CP debug]')) return;
       const command = isSkipCommand(event);
       const authorized = isAuthorizedSkip(event, this.broadcasterId);
       this.onDebug({ event: 'chat-message-received', broadcasterId: event?.broadcaster_user_id || null, chatterId: event?.chatter_user_id || null, chatter: event?.chatter_user_login || event?.chatter_user_name || null, text: String(event?.message?.text || '').slice(0, 120), badges: (event?.badges || []).map(badge => badge.set_id), isSkipCommand: command, isAuthorized: authorized });
