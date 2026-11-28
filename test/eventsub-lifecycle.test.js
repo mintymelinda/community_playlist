@@ -258,6 +258,11 @@ test('stop closes active sockets and cancels reconnect and keepalive timers', as
 
 test('ignores unauthorized real chat messages and deduplicates authorized !skip events', async () => {
   const env = createEventSub();
+  const ownDebugMessage = chatNotification(broadcasterId, broadcasterId, 'own-debug-message');
+  ownDebugMessage.payload.event.message.text = '[CP debug] {"event":"controller-started"}';
+  await env.eventSub.handleNotification(ownDebugMessage);
+  assert.equal(env.debugEvents.length, 0, 'own diagnostics must not echo back into the debug sender');
+
   const unauthorized = chatNotification(
     broadcasterId,
     'ordinary-viewer',
