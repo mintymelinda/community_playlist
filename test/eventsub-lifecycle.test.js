@@ -266,6 +266,11 @@ test('ignores unauthorized real chat messages and deduplicates authorized !skip 
   assert.equal(env.commands.length, 0);
   assert.equal(env.eventSub.store.messages.has('unauthorized-skip'), false);
 
+  const broadcaster = chatNotification(broadcasterId, broadcasterId, 'broadcaster-skip');
+  await env.eventSub.handleNotification(broadcaster);
+  assert.equal(env.commands.length, 1);
+  assert.equal(env.commands[0].command, 'skip');
+
   const authorized = chatNotification(
     broadcasterId,
     'moderator-1',
@@ -275,7 +280,7 @@ test('ignores unauthorized real chat messages and deduplicates authorized !skip 
   await env.eventSub.handleNotification(authorized);
   await env.eventSub.handleNotification(authorized);
 
-  assert.equal(env.commands.length, 1);
-  assert.equal(env.commands[0].command, 'skip');
+  assert.equal(env.commands.length, 2);
+  assert.equal(env.commands[1].command, 'skip');
   assert.equal(env.eventSub.store.messages.has('authorized-skip'), true);
 });
