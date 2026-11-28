@@ -12,3 +12,10 @@ export function findSelectableCustomPowerUp(powerUps, id) {
   if (!id) return null;
   return (powerUps || []).find(powerUp => powerUp.id === id && isSelectableCustomPowerUp(powerUp)) || null;
 }
+
+export function customPowerUpManagementUrl(login) {
+  const value = String(login || '').trim();
+  if (!value) return null;
+  return 'https://dashboard.twitch.tv/u/' + encodeURIComponent(value) +
+    '/viewer-rewards/channel-points/custom-rewards';
+}

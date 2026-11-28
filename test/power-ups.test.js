@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findSelectableCustomPowerUp, isSelectableCustomPowerUp } from '../src/twitch/power-ups.js';
+import { customPowerUpManagementUrl, findSelectableCustomPowerUp, isSelectableCustomPowerUp } from '../src/twitch/power-ups.js';
 
 const usable = {
   id: 'power-up-1',
@@ -32,4 +32,16 @@ test('rejects Power-ups that cannot accept song text input', () => {
     assert.equal(isSelectableCustomPowerUp(candidate), false);
     assert.equal(findSelectableCustomPowerUp([candidate], usable.id), null);
   }
+});
+
+test('builds a direct Twitch Custom Power-ups dashboard URL for the authenticated broadcaster', () => {
+  assert.equal(
+    customPowerUpManagementUrl('streamer_name'),
+    'https://dashboard.twitch.tv/u/streamer_name/viewer-rewards/channel-points/custom-rewards'
+  );
+  assert.equal(customPowerUpManagementUrl(''), null);
+  assert.equal(
+    customPowerUpManagementUrl('streamer name'),
+    'https://dashboard.twitch.tv/u/streamer%20name/viewer-rewards/channel-points/custom-rewards'
+  );
 });
