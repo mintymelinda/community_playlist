@@ -13,11 +13,9 @@ export function normalizeCustomPowerUpRedemption(event, broadcasterId, powerUpId
 }
 
 export function isAuthorizedSkip(event, broadcasterId) {
-  if (!event || event.broadcaster_user_id !== broadcasterId) return false;
-  if (event.chatter_user_id === broadcasterId) return true;
-  return (event.badges || []).some(badge =>
-    badge.set_id === 'moderator' || badge.set_id === 'broadcaster'
-  );
+  if (!event || String(event.broadcaster_user_id || '') !== String(broadcasterId)) return false;
+  if (String(event.chatter_user_id || '') === String(broadcasterId)) return true;
+  return (event.badges || []).some(badge => badge.set_id === 'moderator' || badge.set_id === 'broadcaster');
 }
 
 export function isSkipCommand(event) {
@@ -25,12 +23,13 @@ export function isSkipCommand(event) {
 }
 
 export class TwitchEventSub {
-  constructor({ twitchAuth, broadcasterId, powerUpId, onRedemption, onChatCommand, store, logger = console, WebSocketImpl = WebSocket, timers = globalThis }) {
+  constructor({ twitchAuth, broadcasterId, powerUpId, onRedemption, onChatCommand, onDebug = () => {}, store, logger = console, WebSocketImpl = WebSocket, timers = globalThis }) {
     this.auth = twitchAuth;
     this.broadcasterId = broadcasterId;
     this.powerUpId = powerUpId;
     this.onRedemption = onRedemption;
     this.onChatCommand = onChatCommand;
+    this.onDebug = onDebug;
     this.store = store;
     this.logger = logger;
     this.WebSocketImpl = WebSocketImpl;
@@ -227,8 +226,21 @@ export class TwitchEventSub {
     }
 
     if (type === 'channel.chat.message') {
-      if (!isSkipCommand(event) || !isAuthorizedSkip(event, this.broadcasterId)) return;
-      if (!this.store.rememberMessage(messageId || event.message_id)) return;
+      const command = isSkipCommand(event);
+      const authorized = isAuthorizedSkip(event, this.broadcasterId);
+      this.onDebug({ event: 'chat-message-received', broadcasterId: event?.broadcaster_user_id || null, chatterId: event?.chatter_user_id || null, chatter: event?.chatter_user_login || event?.chatter_user_name || null, text: String(event?.message?.text || '').slice(0, 120), badges: (event?.badges || []).map(badge => badge.set_id), isSkipCommand: command, isAuthorized: authorized });
+      if (!command) return;
+      if (!authorized) {
+        this.logger.warn('[community-playlist] Ignored unauthorized !skip command.', { broadcasterId: event?.broadcaster_user_id || null, expectedBroadcasterId: this.broadcasterId, chatterId: event?.chatter_user_id || null, badges: (event?.badges || []).map(badge => badge.set_id) });
+        this.onDebug({ event: 'skip-command-rejected', reason: 'sender is not broadcaster or moderator' });
+        return;
+      }
+      if (!this.store.rememberMessage(messageId || event.message_id)) {
+        this.onDebug({ event: 'skip-command-duplicate', messageId: messageId || event.message_id || null });
+        return;
+      }
+      this.logger.info('[community-playlist] Authorized !skip command received.', { chatter: event.chatter_user_login || event.chatter_user_name || null, chatterId: event.chatter_user_id, broadcasterId: event.broadcaster_user_id });
+      this.onDebug({ event: 'skip-command-authorized', chatter: event.chatter_user_login || event.chatter_user_name || null });
       await this.onChatCommand({ command: 'skip', user: event.chatter_user_name || event.chatter_user_login });
     }
   }
