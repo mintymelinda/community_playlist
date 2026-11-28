@@ -3,10 +3,12 @@
 ## User setup
 
 1. Open the signup page over HTTPS.
-2. Authorize Twitch as the account that owns the channel you want to monitor. That same account is the EventSub chat reader and broadcaster identity; the application owner does not need channel moderator access. Setup loads that channel's Custom Power-ups from Twitch.
+2. Authorize Twitch as the account that owns the channel you want to monitor. Check the Twitch account shown on the authorization page before approving. That same account is the EventSub chat reader, broadcaster identity, and sender for optional debug chat messages; the application owner does not need channel moderator access. The requested Twitch scopes are `bits:read`, `user:read:chat`, and `user:write:chat`. Setup loads that channel's Custom Power-ups from Twitch.
 3. Select the enabled, in-stock Custom Power-up that requires viewer text input and should be used for song requests. The selection is saved by Twitch Power-up ID, not by its display name. Use Refresh list if you change Power-ups in Twitch while setup is open.
 4. Authorize the Spotify account. After both providers are connected and a Power-up is selected, choose Finish setup.
-5. On the completion page, use COPY to retrieve the OBS Browser Source URL and paste it into OBS.
+5. On the completion page, optionally check **Enable debugging** and use **COPY DEBUG URL** to retrieve a URL that includes `?debug=true`. Add that URL as the OBS Browser Source. The controller will post startup, EventSub chat-receipt, authorization, and `!skip` processing diagnostics into the broadcaster's Twitch chat. Leave the checkbox unchecked for normal operation.
+
+The hosted setup requests `user:write:chat` so the broadcaster account can send debug messages when the OBS URL has `?debug=true`. Existing Twitch authorizations do not gain this scope automatically: revoke/re-run hosted setup and authorize the broadcaster account again after deploying this change.
 
 The broadcaster does not provide a playlist URL. At runtime, the controller discovers the playlist already playing on the active Spotify Connect device and returns to that playlist after viewer requests. Start the playlist you want to use before accepting requests.
 
