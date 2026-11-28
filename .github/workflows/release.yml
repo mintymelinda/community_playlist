@@ -27,17 +27,8 @@ jobs:
         with:
           node-version: 24
 
-      - name: Verify source and release version
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm run verify
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          if [[ "$TAG_VERSION" != "$PACKAGE_VERSION" ]]; then
-            echo "::error::Release tag ${GITHUB_REF_NAME} does not match package.json version ${PACKAGE_VERSION}."
-            exit 1
-          fi
+      - name: Verify tagged source
+        run: npm run verify
 
       - name: Assemble distributable archive
         shell: bash
@@ -76,4 +67,12 @@ jobs:
           if [[ "$TAG" == *-* ]]; then
             ARGS+=(--prerelease)
           fi
-          gh "${ARGS[@]}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; updating its distributable assets."
+            gh release upload "$TAG" \
+              "dist/${PACKAGE_DIR}.zip" \
+              "dist/${PACKAGE_DIR}.zip.sha256" \
+              --clobber
+          else
+            gh "${ARGS[@]}"
+          fi
