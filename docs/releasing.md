@@ -13,15 +13,13 @@ For each release it:
    - `community-playlist-vX.Y.Z.zip`
    - `community-playlist-vX.Y.Z.zip.sha256`
 
-Tags containing a prerelease suffix, such as `v0.3.0-rc.1`, are published as GitHub prereleases. The archive contains the static overlay (`overlay.html` and `src/`), the Node.js authorization service, Dockerfile, Compose file, public OAuth configuration template, README, and docs. It intentionally excludes tests, CI credentials, local configuration, and the live E2E harness.
+Tags containing a prerelease suffix, such as `v0.3.0-rc.1`, are published as GitHub prereleases. The archive contains the static overlay (`overlay.html` and `src/`), the Node.js authorization service, Dockerfile, Compose file, public OAuth configuration template, README, and docs. It intentionally excludes tests, CI credentials, and local configuration.
 
 The release job uses the repository-provided `GITHUB_TOKEN`; no additional release token or third-party publishing action is required.
 
 ## One-time GitHub setup
 
 No additional repository secrets or variables are needed for publishing releases. Ensure GitHub Actions is enabled and that the workflow's token is allowed to create releases (the workflow requests `contents: write`).
-
-The live Twitch/Spotify E2E workflow has separate provider configuration. Its variables and the `SPOTIFY_PKCE_HANDOFF_KEY` secret are not needed by the release workflow. See [Live E2E through GitHub Actions](../README.md#live-e2e-through-github-actions) for those settings.
 
 ## Cut a release
 
