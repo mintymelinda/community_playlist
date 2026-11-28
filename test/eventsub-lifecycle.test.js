@@ -106,6 +106,7 @@ function createEventSub() {
   const subscriptions = [];
   const redemptions = [];
   const commands = [];
+  const debugEvents = [];
   const log = { info() {}, warn() {}, error() {} };
   const store = {
     messages: new Set(),
@@ -127,12 +128,13 @@ function createEventSub() {
     powerUpId,
     onRedemption: async value => redemptions.push(value),
     onChatCommand: async value => commands.push(value),
+    onDebug: value => debugEvents.push(value),
     store,
     logger: log,
     WebSocketImpl: FakeWebSocket,
     timers
   });
-  return { eventSub, timers, subscriptions, redemptions, commands };
+  return { eventSub, timers, subscriptions, redemptions, commands, debugEvents };
 }
 
 async function connect(eventSub, sessionId = 'session-1') {
@@ -270,6 +272,7 @@ test('ignores unauthorized real chat messages and deduplicates authorized !skip 
   await env.eventSub.handleNotification(broadcaster);
   assert.equal(env.commands.length, 1);
   assert.equal(env.commands[0].command, 'skip');
+  assert.equal(env.debugEvents.some(item => item.event === 'skip-command-authorized'), true);
 
   const authorized = chatNotification(
     broadcasterId,
