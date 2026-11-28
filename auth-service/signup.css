@@ -1,3 +1,5 @@
 :root{color-scheme:dark;font:16px/1.5 system-ui,sans-serif;background:#10131a;color:#f2f4f8}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}main{width:min(100%,560px);padding:32px;border:1px solid #343b49;border-radius:16px;background:#191f2a}label{display:block;margin:20px 0 6px}#debugUrl{width:auto;padding:0;margin-right:8px}input,select{width:100%;padding:12px;border:1px solid #596477;border-radius:8px;background:#0e1219;color:inherit}button{margin:12px 8px 8px 0;padding:12px 20px;border:0;border-radius:8px;background:#a9c7ff;color:#10131a;font-weight:700;cursor:pointer}[hidden]{display:none!important}[role=alert]{color:#ff9c9c}
 
+#debugOption{margin:20px 0;padding:14px 16px;border:1px solid #dc4545;border-radius:10px;background:#351719}#debugOption label{margin:0;color:#ff7777;font-weight:800}#debugOption #debugUrl{accent-color:#e5484d}#debugOption .debug-warning{margin:8px 0 0;color:#ffb5b5;font-size:14px;line-height:1.45}
+
 .support{margin-top:28px;padding-top:16px;border-top:1px solid #343b49;text-align:center;color:#aeb7c6;font-size:14px}.support p{margin:0}.support a{color:#a9c7ff;font-weight:600}
